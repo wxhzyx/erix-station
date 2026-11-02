@@ -25,9 +25,10 @@ ENV NODE_ENV=production
 # 经 HTTPS 和目标 SHA lease 推送；不执行工作区 hooks/config。需要 git >=2.38 与 CA 证书。
 # 层序照 runner/Dockerfile：重且稳定的 apt 层在前、易变代码在后（改 portal 代码不触发重装）；
 #   `--no-install-recommends` + 同层 `rm -rf /var/lib/apt/lists/*`（评审 F6 先例：异层清理等于没清）。
+# util-linux 提供文档解析子进程的 prlimit（硬地址空间/CPU限制，缺失时解析失败关闭）。
 # 本层内容被 `portal/test/portal-image-git.test.js` 以文本锁钉住。
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git ca-certificates \
+  && apt-get install -y --no-install-recommends git ca-certificates util-linux \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

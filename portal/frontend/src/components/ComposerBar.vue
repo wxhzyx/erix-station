@@ -18,8 +18,9 @@ const attachmentLimitError = computed(() => store.pendingAttachments.length > 8
   ? '取回的文件超出单次发送限制（8 个 / 256 KiB）。文件仍保留，请移除部分附件后分批发送。' : '');
 let mounted = true;
 let readGeneration = 0;
-watch(() => [auth.user?.id, store.sessionId, store.dirCwd], () => { readGeneration++; }, { flush: 'sync' });
-onBeforeUnmount(() => { mounted = false; readGeneration++; });
+let readController = new AbortController();
+watch(() => [auth.user?.id, store.sessionId, store.dirCwd], () => { readGeneration++; readController.abort(); readController = new AbortController(); readingFiles.value = false; uploadError.value = ''; }, { flush: 'sync' });
+onBeforeUnmount(() => { mounted = false; readGeneration++; readController.abort(); });
 async function selectFiles(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files ?? []);
@@ -32,10 +33,10 @@ async function selectFiles(event: Event) {
   readingFiles.value = true;
   uploadError.value = '';
   try {
-    const attachments = await readWorkFiles(files, store.pendingAttachments);
+    const attachments = await readWorkFiles(files, store.pendingAttachments, readController.signal);
     if (mounted && generation === readGeneration && owner === auth.user?.id && sid === store.sessionId && cwd === store.dirCwd) store.pendingAttachments = attachments;
   } catch (error) { if (mounted && generation === readGeneration) uploadError.value = error instanceof Error ? error.message : '文件读取失败'; }
-  finally { readingFiles.value = false; }
+  finally { if (mounted && generation === readGeneration) readingFiles.value = false; }
 }
 
 // issue #370：运行中说话（转向 / 排队）与队列条。空值提交由 store 兜底，按钮 disable 只是体验层。
@@ -66,10 +67,12 @@ function onKeydown(e: KeyboardEvent) {
     <label class="station-secondary inline-flex cursor-pointer rounded-lg px-3 py-2">📎 上传文件
       <input aria-label="上传工作文件" type="file" multiple :disabled="store.sendDisabled || readingFiles" @change="selectFiles" class="sr-only" />
     </label>
-    <span class="ml-2">文本 / 代码 · 最多 8 个 · 单个 64 KiB · 总计 256 KiB</span>
+    <span class="ml-2">文本 / 代码 / PDF / DOCX / XLSX / PPTX · 最多 8 个 · 文档单个 8 MiB，提取文本单个 64 KiB / 总计 256 KiB（扫描 PDF 暂无 OCR）</span>
     <div v-for="(file, index) in store.pendingAttachments" :key="index" class="inline-flex m-1 rounded bg-gray-100 px-2 py-1">
       {{ file.name }} <button :disabled="store.sendDisabled || readingFiles" class="ml-2" :aria-label="`移除 ${file.name}`" @click="store.pendingAttachments.splice(index, 1)">×</button>
     </div>
+    <p v-for="warning in store.pendingAttachments.flatMap(file => (file.warnings ?? []).map(w => `${file.name}: ${w}`))" :key="warning" role="status" class="text-amber-700">{{ warning }}</p>
+    <p v-if="readingFiles" role="status">正在读取 / 解析文件…</p>
     <p v-if="attachmentLimitError" role="alert" class="text-red-600">{{ attachmentLimitError }}</p>
     <p v-if="uploadError" role="alert" class="text-red-600">{{ uploadError }}</p>
   </div>
@@ -91,7 +94,7 @@ function onKeydown(e: KeyboardEvent) {
     <button
       v-if="!store.inputValue.trim() && !store.pendingAttachments.length && !store.running && store.retryAvailable"
       class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5 disabled:opacity-50"
-      :disabled="store.retryInFlight"
+      :disabled="store.retryInFlight || readingFiles"
       @click="store.retryLast()"
     >{{ t('composer.retry') }}</button>
     <!-- issue #370：运行中发送键分裂成两个动作（对齐 agegr/pi-web ChatInput.tsx:802-825 的

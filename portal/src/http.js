@@ -19,6 +19,7 @@ import * as internal from './internal.js';
 import * as artifacts from './artifacts.js';
 import * as llm from './llm.js';
 import * as chatMode from './chat-mode.js';
+import { parseDocument } from './document-parser.js';
 import * as projectApprovals from './project-approvals.js';
 import { createApprovalRepository, ApprovalRepositoryError } from './approval-repository.js';
 import { ApprovalMergeError } from './approval-git-merge.js';
@@ -495,6 +496,7 @@ function readJsonBody(req, limit) {
       }
     });
     req.on('error', (e) => reject(e));
+    req.on('aborted', () => reject(new HttpError(400, 'request_aborted', 'request aborted')));
   });
 }
 
@@ -571,6 +573,7 @@ export function createServer({ pool, config, log = console, docker = null, llmGa
   const ctx = {
     approvalRepository: approvalRepository ?? createApprovalRepository({ pool, config }),
     approvalComplete,
+    documentUploads: new Set(),
     pool, config, log, loginLimiter, totpLimiter, totpTokenLimiter, kdfSemaphore, previewTicketLimiter, docker,
     llmGateway: llmGateway ?? createLlmGatewayClient({
       adminUrl: config.llmGatewayAdminUrl ?? 'http://station-litellm:4000',
@@ -811,6 +814,34 @@ async function routeApi(req, res, ctx, url) {
   if (projectApprovalMatch && req.method === 'GET') {
     const session = await requireSession(req, ctx);
     return sendJson(res, 200, await projectApprovals.getProjectApproval(pool, session.user.id, projectApprovalMatch[1]));
+  }
+
+  // Stateless extraction: authenticated input bytes only, no paths, storage or model call.
+  // Reserve before reading the body so concurrent large uploads are bounded as well.
+  if (pathname === '/api/attachments/extract') {
+    const session = await requireSession(req, ctx);
+    if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+    requireJson(req);
+    const uploads = ctx.documentUploads;
+    if (uploads.size >= 4 || uploads.has(session.user.id)) {
+      throw new HttpError(429, 'document_busy', '文档解析繁忙，请稍后重试');
+    }
+    uploads.add(session.user.id);
+    const deadline = setTimeout(() => req.destroy(), 30000);
+    try {
+      const body = await readJsonBody(req, 12 * 1024 * 1024);
+      const result = await parseDocument({ name: body?.name, data: body?.data_base64 });
+      res.setHeader('Cache-Control', 'no-store');
+      return sendJson(res, 200, result);
+    } catch (err) {
+      if (typeof err.code === 'string' && err.code.startsWith('document_')) {
+        throw new HttpError(err.status ?? 422, err.code, err.message);
+      }
+      throw err;
+    } finally {
+      clearTimeout(deadline);
+      uploads.delete(session.user.id);
+    }
   }
 
   if (pathname === '/api/me/mode-settings' && req.method === 'GET') {

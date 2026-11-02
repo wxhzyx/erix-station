@@ -229,3 +229,27 @@ it('retains oversized recalled attachment sets and explains splitting/removal', 
   expect(store.pendingAttachments).toHaveLength(8);
   expect(wrapper.text()).not.toContain('取回的文件超出单次发送限制');
 });
+
+it('discards work document extraction on directory navigation and aborts its request', async () => {
+  const { store, wrapper } = setup();
+  store.lastSend = { sessionId: 's1', content: 'prior task' };
+  store.retryAvailable = true;
+  let resolve!: (value: Response) => void;
+  let signal: AbortSignal | undefined;
+  vi.stubGlobal('fetch', vi.fn((_path: string, opts: RequestInit) => {
+    signal = opts.signal ?? undefined;
+    return new Promise<Response>(r => { resolve = r; });
+  }));
+  const input = wrapper.get('input[type=file]');
+  Object.defineProperty(input.element, 'files', { value: [new File(['synthetic'], 'private.docx')] });
+  await input.trigger('change'); await new Promise(r => setTimeout(r, 30)); await flushPromises();
+  expect(wrapper.get('[data-queued-kind=send]').attributes('disabled')).toBeDefined();
+  expect(wrapper.findAll('button').find(b => b.text().includes('重试'))!.attributes('disabled')).toBeDefined();
+  store.dirCwd = '/different'; await flushPromises();
+  expect(signal?.aborted).toBe(true);
+  resolve(new Response(JSON.stringify({ text: 'private', warnings: ['private warning'] }), { status: 200 }));
+  await flushPromises();
+  expect(store.pendingAttachments).toEqual([]);
+  expect(wrapper.text()).not.toContain('private warning');
+  wrapper.unmount();
+});

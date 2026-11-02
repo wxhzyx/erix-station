@@ -3,11 +3,12 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { api } from '../api';
+import { bytesBase64, extractDocument, isDocument, readBase64, rejectLegacyDocument } from '../lib/documentAttachments';
 import { useAuthStore } from '../stores/auth';
 import StationModeSwitch from '../components/StationModeSwitch.vue';
 import LocaleSwitch from '../components/LocaleSwitch.vue';
 interface Conversation { id: string; title: string }
-interface Attachment { name: string; mime_type: string; data_base64: string }
+interface Attachment { name: string; mime_type: string; data_base64: string; warnings?: string[] }
 interface Message { id: string; role: string; content: string; attachments?: { name: string; size: number }[] }
 const auth = useAuthStore(); const route = useRoute(); const router = useRouter(); const { locale, t } = useI18n();
 const en = computed(() => locale.value === 'en');
@@ -15,7 +16,7 @@ const conversations = ref<Conversation[]>([]); const messages = ref<Message[]>([
 const draft = ref(''); const files = ref<Attachment[]>([]); const error = ref(''); const busy = ref(false); const reading = ref(false);
 let epoch = 0; let controller = new AbortController(); let retry: { fingerprint: string; id: string } | undefined;
 const base = '/api/chat/conversations';
-const accept = '.txt,.md,.csv,.js,.html,.css,.json,.xml,.png,.jpg,.jpeg,.webp';
+const accept = '.txt,.md,.csv,.js,.html,.css,.json,.xml,.png,.jpg,.jpeg,.webp,.pdf,.docx,.xlsx,.pptx';
 function reset() { epoch++; controller.abort(); controller = new AbortController(); selected.value = ''; messages.value = []; draft.value = ''; files.value = []; error.value = ''; busy.value = false; reading.value = false; retry = undefined; }
 async function refreshList(token: number) { const result = await api<{ conversations: Conversation[] }>(base, { signal: controller.signal }); if (token === epoch) conversations.value = result.conversations; }
 async function open() {
@@ -30,7 +31,7 @@ async function open() {
   } catch (e) { if (token === epoch) error.value = (e as Error).message; }
   finally { if (token === epoch) busy.value = false; }
 }
-watch(() => [auth.user?.id, route.params.id], (_value, old) => { if (old && old[0] !== auth.user?.id) { reset(); conversations.value = []; } void open(); }, { immediate: true });
+watch(() => [auth.user?.id, route.params.id], (_value, old) => { if (old && old[0] !== auth.user?.id) { reset(); conversations.value = []; } void open(); }, { immediate: true, flush: 'sync' });
 async function choose(event: Event) { const value = (event.target as HTMLSelectElement).value; await router.push(value ? `/chat/${encodeURIComponent(value)}` : '/chat'); }
 async function newChat() { if (busy.value) return; if (route.params.id) await router.push('/chat'); else reset(); }
 function fileType(file: File) {
@@ -38,17 +39,30 @@ function fileType(file: File) {
   const types: Record<string, string> = { txt:'text/plain',md:'text/markdown',csv:'text/csv',js:'text/javascript',html:'text/html',css:'text/css',json:'application/json',xml:'application/xml',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp' };
   return types[ext ?? ''] ?? file.type;
 }
-function readBase64(file: File): Promise<string> { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] ?? ''); reader.onerror = () => reject(new Error('文件读取失败 / Unable to read file')); reader.readAsDataURL(file); }); }
 async function upload(event: Event) {
   const input = event.target as HTMLInputElement; const chosen = Array.from(input.files ?? []); input.value = '';
   if (!chosen.length || reading.value || busy.value) return;
   const token = epoch; reading.value = true; error.value = '';
   try {
-    const currentBytes = files.value.reduce((sum, f) => sum + Math.floor(f.data_base64.length * 3 / 4), 0);
-    if (files.value.length + chosen.length > 5 || chosen.some(f => f.size > 1024 * 1024) || currentBytes + chosen.reduce((sum, f) => sum + f.size, 0) > 4 * 1024 * 1024) throw new Error(en.value ? 'Maximum 5 files, 1 MiB per file, 4 MiB total.' : '最多 5 个文件，每个不超过 1 MiB，总计不超过 4 MiB。');
+    if (files.value.length + chosen.length > 5) throw new Error('最多 5 个文件 / Maximum 5 files');
     const allowed = new Set(['text/plain','text/markdown','text/csv','text/javascript','text/html','text/css','application/json','application/xml','text/xml','image/png','image/jpeg','image/webp']);
-    if (chosen.some(f => !allowed.has(fileType(f)))) throw new Error(en.value ? 'Unsupported file. Use UTF-8 text, JSON, CSV, or PNG/JPEG/WebP images.' : '暂不支持此文件格式。请选择 UTF-8 文本、JSON、CSV 或 PNG/JPEG/WebP 图片。');
-    const attachments = await Promise.all(chosen.map(async f => ({ name: f.name, mime_type: fileType(f), data_base64: await readBase64(f) })));
+    const attachments: Attachment[] = [];
+    // Sequential extraction bounds uploads and checks account/navigation cancellation between files.
+    const signal = controller.signal;
+    for (const f of chosen) {
+      signal.throwIfAborted();
+      rejectLegacyDocument(f.name);
+      if (isDocument(f.name)) {
+        const extracted = await extractDocument(f, signal);
+        attachments.push({ name: f.name, mime_type: 'text/plain', data_base64: bytesBase64(new TextEncoder().encode(extracted.text)), warnings: extracted.warnings });
+      } else {
+        if (f.size > 1024 * 1024) throw new Error('文本或图片单个最多 1 MiB / Maximum text/image size: 1 MiB');
+        if (!allowed.has(fileType(f))) throw new Error('暂不支持此文件格式 / Unsupported file format');
+        attachments.push({ name: f.name, mime_type: fileType(f), data_base64: await readBase64(f) });
+      }
+    }
+    const byteLength = (f: Attachment) => Math.floor(f.data_base64.length * 3 / 4) - (f.data_base64.endsWith('==') ? 2 : f.data_base64.endsWith('=') ? 1 : 0);
+    if ([...files.value, ...attachments].reduce((sum, f) => sum + byteLength(f), 0) > 4 * 1024 * 1024) throw new Error('附件提取后总计最多 4 MiB / Maximum extracted total: 4 MiB');
     if (token === epoch) files.value.push(...attachments);
   } catch (e) { if (token === epoch) error.value = (e as Error).message; }
   finally { if (token === epoch) reading.value = false; }
@@ -105,13 +119,14 @@ onUnmounted(reset);
       </section>
       <form class="station-composer space-y-3 rounded-2xl p-4" @submit.prevent="send">
         <p v-if="error" role="alert" class="text-sm text-red-700">{{ error }}</p>
-        <ul v-if="files.length" class="flex flex-wrap gap-2"><li v-for="(f,index) in files" :key="index" class="rounded bg-black/5 px-2 py-1 text-sm">📎 {{ f.name }} <button type="button" :disabled="busy" :aria-label="`${en ? 'Remove' : '移除'} ${f.name}`" @click="files.splice(index,1)">×</button></li></ul>
+        <ul v-if="files.length" class="flex flex-wrap gap-2"><li v-for="(f,index) in files" :key="index" class="rounded bg-black/5 px-2 py-1 text-sm">📎 {{ f.name }} <button type="button" :disabled="busy || reading" :aria-label="`${en ? 'Remove' : '移除'} ${f.name}`" @click="files.splice(index,1)">×</button></li></ul>
+        <p v-for="warning in files.flatMap(file => (file.warnings ?? []).map(w => `${file.name}: ${w}`))" :key="warning" role="status" class="text-sm text-amber-700">{{ warning }}</p>
         <textarea v-model="draft" :disabled="busy" maxlength="100000" rows="3" :aria-label="en ? 'Message' : '消息'" :placeholder="en ? 'Write a message…' : '输入消息…'" class="w-full resize-none bg-transparent p-1 outline-none"></textarea>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <label class="station-secondary cursor-pointer rounded-lg px-3 py-2 text-sm">{{ reading ? (en ? 'Reading…' : '读取中…') : (en ? 'Attach files' : '上传文件') }}<input type="file" multiple :accept="accept" :disabled="busy || reading" class="sr-only" @change="upload" /></label>
           <button class="station-primary rounded-xl px-5 py-2 text-white disabled:opacity-40" :disabled="busy || reading || (!draft.trim() && !files.length)">{{ en ? 'Send' : '发送' }}</button>
         </div>
-        <p class="text-xs text-black/50">{{ en ? 'Text / images · 5 files · 1 MiB each · 4 MiB total' : '文本 / 图片 · 最多 5 个 · 单个 1 MiB · 总计 4 MiB' }}</p>
+        <p class="text-xs text-black/50">{{ en ? 'Text / images / PDF / DOCX / XLSX / PPTX · 5 files · documents 8 MiB each, extracted text 64 KiB each · text/images 1 MiB each · total 4 MiB · No scanned PDF OCR' : '文本 / 图片 / PDF / DOCX / XLSX / PPTX · 最多 5 个 · 文档单个 8 MiB，提取文本 64 KiB · 文本/图片单个 1 MiB · 总计 4 MiB · 扫描 PDF 暂无 OCR' }}</p>
       </form>
     </main>
   </div>

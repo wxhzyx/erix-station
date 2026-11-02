@@ -58,3 +58,8 @@ test('approved HTTPS merge transport has trusted CA certificates in runtime', ()
   const runtime = stages(fs.readFileSync(DOCKERFILE, 'utf8')).find(s => /portal\/src\/cli\.js/.test(s.body));
   assert.match(runtime.body, /apt-get install[^\n]*\bca-certificates\b/);
 });
+
+test('document parser hard limits require util-linux in the runtime image', () => {
+  const runtime = stages(fs.readFileSync(DOCKERFILE, 'utf8')).find(s => /portal\/src\/cli\.js/.test(s.body));
+  assert.match(runtime.body, /apt-get install[^\n]*\butil-linux\b/);
+});

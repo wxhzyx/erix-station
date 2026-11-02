@@ -94,7 +94,7 @@ describe('Standalone chat', () => {
   });
   it('rejects excessive and unsupported files without sending or silently accepting', async () => {
     const { wrapper } = await setup(); const input = wrapper.get('input[type=file]');
-    Object.defineProperty(input.element, 'files', {configurable:true,value:[new File(['pdf'], 'file.pdf', {type:'application/pdf'})]});
+    Object.defineProperty(input.element, 'files', {configurable:true,value:[new File(['binary'], 'file.bin', {type:'application/octet-stream'})]});
     await input.trigger('change'); await flushPromises(); expect(wrapper.get('[role=alert]').text()).toContain('暂不支持');
     Object.defineProperty(input.element, 'files', {configurable:true,value:Array.from({length:6}, (_,i) => new File(['x'], `${i}.txt`))});
     await input.trigger('change'); await flushPromises(); expect(wrapper.get('[role=alert]').text()).toContain('最多 5');
@@ -106,5 +106,55 @@ describe('Standalone chat', () => {
     await wrapper.get('textarea').setValue('unsent'); router.back(); await new Promise(r => setTimeout(r, 10)); await flushPromises();
     expect(wrapper.find('article').exists()).toBe(false);
     expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('');
+  });
+});
+
+describe('document extraction', () => {
+  async function upload(wrapper: ReturnType<typeof mount>, name = 'report.pdf') {
+    const input = wrapper.get('input[type=file]');
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['synthetic document'], name)] });
+    await input.trigger('change');
+    await new Promise(r => setTimeout(r, 30)); await flushPromises();
+  }
+  it('sends extracted Unicode text, not document bytes, and displays warnings', async () => {
+    const { wrapper } = await setup();
+    const original = mockApi.getMockImplementation()!;
+    mockApi.mockImplementation(async (path, opts) => path === '/api/attachments/extract'
+      ? { name: 'report.pdf', text: '表格内容\n[已截断]', warnings: ['已截断'] } : original(path, opts));
+    await upload(wrapper);
+    expect(wrapper.text()).toContain('已截断');
+    await wrapper.get('form').trigger('submit'); await flushPromises();
+    const body = JSON.parse(mockApi.mock.calls.find(([url]) => url.endsWith('/messages'))![1]!.body as string);
+    expect(body.attachments[0].mime_type).toBe('text/plain');
+    expect(new TextDecoder().decode(Uint8Array.from(atob(body.attachments[0].data_base64), c => c.charCodeAt(0)))).toBe('表格内容\n[已截断]');
+  });
+  it.each(['account', 'navigation'])('ignores extraction after %s changes and prevents sending while pending', async change => {
+    const { wrapper, auth, router } = await setup();
+    let resolve!: (value: unknown) => void;
+    const original = mockApi.getMockImplementation()!;
+    mockApi.mockImplementation((path, opts) => path === '/api/attachments/extract'
+      ? new Promise(r => { resolve = r; }) : original(path, opts));
+    await upload(wrapper);
+    await wrapper.get('form').trigger('submit'); await flushPromises();
+    expect(mockApi.mock.calls.some(([url]) => url.endsWith('/messages'))).toBe(false);
+    const extractionOpts = mockApi.mock.calls.find(([url]) => url === '/api/attachments/extract')![1]!;
+    if (change === 'account') {
+      auth.user = { ...user, id: 'u2' };
+      expect(extractionOpts.signal?.aborted).toBe(true); // Synchronous, before next promise tick.
+    }
+    else await router.push('/chat/c1');
+    await flushPromises();
+    expect(extractionOpts.signal?.aborted).toBe(true);
+    resolve({ name: 'report.pdf', text: 'private', warnings: ['private warning'] }); await flushPromises();
+    expect(wrapper.text()).not.toContain('report.pdf'); expect(wrapper.text()).not.toContain('private warning');
+  });
+  it('rejects legacy and oversized documents before calling extraction', async () => {
+    const { wrapper } = await setup();
+    await upload(wrapper, 'old.doc'); expect(wrapper.get('[role=alert]').text()).toContain('转换');
+    const input = wrapper.get('input[type=file]');
+    Object.defineProperty(input.element, 'files', { configurable:true, value:[{name:'large.pdf',size:8 * 1024 * 1024 + 1}] });
+    await input.trigger('change'); await flushPromises();
+    expect(wrapper.get('[role=alert]').text()).toContain('8 MiB');
+    expect(mockApi.mock.calls.some(([url]) => url === '/api/attachments/extract')).toBe(false);
   });
 });
