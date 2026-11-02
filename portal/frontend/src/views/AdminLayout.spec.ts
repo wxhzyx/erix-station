@@ -27,7 +27,7 @@ function makeRouter() {
       { path: '/login', component: { template: '<div>login</div>' } },
       // 顶栏四个 tab 用的是 `{ name: ... }` 形式的 :to ⇒ 路由表里没有这些名字，挂载当场就
       // "No match for {name:'admin-users'}" 抛错（不是断言失败）。给桩即可，本单不测 tab。
-      ...['admin-users', 'admin-llm', 'admin-repos', 'admin-preview-pool']
+      ...['admin-approvals', 'admin-users', 'admin-llm', 'admin-repos', 'admin-preview-pool']
         .map((name) => ({ path: `/${name}`, name, component: { template: '<div />' } })),
     ],
   });

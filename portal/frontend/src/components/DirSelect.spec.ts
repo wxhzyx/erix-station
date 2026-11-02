@@ -81,3 +81,17 @@ describe('DirSelect（目录下拉）', () => {
     expect(wrapper.get('label[for="dirSel"]').classes()).toContain('text-[11px]');
   });
 });
+
+describe('Project context menu', () => {
+  it('right click and keyboard open actions for selected project; escape dismisses', async () => {
+    const { wrapper } = setup([{name:'demo',cwd:'~/projects/demo',running_count:0,queued_count:0}]);
+    await wrapper.get('select').trigger('contextmenu');
+    expect(wrapper.get('[role=menu]').text()).toContain('发起审批');
+    expect(wrapper.get('[role=menu]').text()).toContain('合并版本');
+    await wrapper.get('[role=menu]').trigger('keydown',{key:'Escape'}); expect(wrapper.find('[role=menu]').exists()).toBe(false);
+    await wrapper.get('select').trigger('keydown',{key:'F10',shiftKey:true}); expect(wrapper.find('[role=menu]').exists()).toBe(true); wrapper.unmount();
+  });
+  it('visible actions fallback disables without a project and closes on project change',async()=>{
+    const {wrapper,store}=setup([]);expect(wrapper.get('button[aria-label="项目操作"]').attributes('disabled')).toBeDefined();store.dirCwd='~/projects/a';await wrapper.vm.$nextTick();await wrapper.get('button[aria-label="项目操作"]').trigger('click');expect(wrapper.find('[role=menu]').exists()).toBe(true);store.dirCwd='~/projects/b';await wrapper.vm.$nextTick();expect(wrapper.find('[role=menu]').exists()).toBe(false);wrapper.unmount();
+  });
+});

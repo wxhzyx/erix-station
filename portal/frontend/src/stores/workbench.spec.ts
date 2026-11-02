@@ -2410,7 +2410,7 @@ describe('#431 迟到写回的三条守卫（createDir / recallQueue / stop）',
     expect(store.dirs.map((d) => d.name)).toContain('my-new');
   });
 
-  it('recallQueue 在途时换账号：文本存回**原会话草稿**，不写进新账号的输入框', async () => {
+  it('recallQueue 在途时换账号：丢弃迟到的文本，不写进新账号的输入框或草稿', async () => {
     const { release } = deferOnce((url, init) => init?.method === 'DELETE');
     const store = useWorkbenchStore();
     store.claimOwnership('u1');
@@ -2421,9 +2421,9 @@ describe('#431 迟到写回的三条守卫（createDir / recallQueue / stop）',
     await inflight;
 
     expect(store.inputValue, 'A 排队的文本不得灌进 B 的输入框').toBe('');
-    // 队列在服务端已被整队取走 ⇒ 直接丢弃 = 文本两头没。切回原会话必须还能拿回来。
+    // 安全边界：旧账号响应不得在换人后重新写入已清空的草稿集合。
     await store.openSession('s1');
-    expect(store.inputValue, '取回的文本按原会话存进 drafts，切回去还在').toBe('A 排的队');
+    expect(store.inputValue, '换人后迟到文本不重新写入草稿').toBe('');
   });
 
   it('stop 在途时换账号：提示行不追进新账号的消息流', async () => {
@@ -2440,4 +2440,119 @@ describe('#431 迟到写回的三条守卫（createDir / recallQueue / stop）',
 
     expect(store.entries, '「已请求停止」是上一账号那条流的事，不得插进新账号的消息流').toEqual([]);
   });
+});
+
+describe('work mode attachment drafts', () => {
+  const upload = { kind: 'file' as const, path: 'upload:a.txt', name: 'a.txt', text: 'file contents' };
+  it('posts multiple uploaded contents, blocks repeat click, retains files on failure', async () => {
+    let release!: (value: Response) => void;
+    const fetch = vi.fn((_url: string, _init?: RequestInit) => new Promise<Response>(resolve => { release = resolve; }));
+    vi.stubGlobal('fetch', fetch);
+    const store = useWorkbenchStore();
+    store.sessionId = 's1'; store.dirCwd = DIR_A.cwd;
+    store.pendingAttachments = [upload, { ...upload, name: 'b.txt' }];
+    const pending = store.send();
+    await store.send();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetch.mock.calls[0]?.[1]?.body as string).attachments).toHaveLength(2);
+    release(jsonResponse(503, { error: { code: 'unavailable', message: 'try later' } }));
+    await pending;
+    expect(store.pendingAttachments).toHaveLength(2);
+    expect(store.messageSubmitting).toBe(false);
+    store.claimOwnership('other');
+    expect(store.pendingAttachments).toEqual([]);
+  });
+  it('scope reset prevents late failed send from restoring uploaded contents', async () => {
+    let release!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { release = resolve; })));
+    const store = useWorkbenchStore();
+    store.claimOwnership('first'); store.sessionId = 's1'; store.dirCwd = DIR_A.cwd;
+    store.pendingAttachments = [upload];
+    const pending = store.send();
+    store.claimOwnership('second');
+    release(jsonResponse(503, { error: { code: 'unavailable', message: 'try later' } }));
+    await pending;
+    expect(store.pendingAttachments).toEqual([]);
+    expect(store.inputValue).toBe('');
+  });
+});
+
+describe('work attachment interrupted submissions', () => {
+  it('blocks queue keyboard actions during an ordinary POST', async () => {
+    let release!: (response: Response) => void;
+    const request = vi.fn(() => new Promise<Response>(resolve => { release = resolve; }));
+    vi.stubGlobal('fetch', request);
+    const store = useWorkbenchStore();
+    store.sessionId = 's1'; store.inputValue = 'first';
+    const sent = store.send();
+    store.inputValue = 'second';
+    await store.sendQueued('follow_up');
+    expect(request).toHaveBeenCalledTimes(1);
+    release(jsonResponse(503, { error: { code: 'unavailable' } }));
+    await sent;
+  });
+  it('clears transmitted attachment drafts when queue succeeds after navigation away', async () => {
+    let release!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Promise<Response>(resolve => { release = resolve; });
+      if (url.includes('/events/history')) return Promise.resolve(jsonResponse(200, { events: [] }));
+      return Promise.resolve(jsonResponse(200, { session: { id: 's1' }, messages: [], last_seq: 0, items: [] }));
+    }));
+    const store = useWorkbenchStore();
+    store.sessionId = 's1'; store.inputValue = 'read';
+    store.pendingAttachments = [{ kind: 'file', path: 'upload:a.txt', name: 'a.txt', text: 'sent content' }];
+    const sent = store.sendQueued('follow_up');
+    store.resetSessionView();
+    release(jsonResponse(202, { posted: null, queued: { id: 'q1', content: 'read' } }));
+    await sent;
+    await store.openSession('s1');
+    expect(store.pendingAttachments).toEqual([]);
+    expect(store.inputValue).toBe('');
+  });
+});
+
+
+it('attachment-only draft prevents retrying the previous message', async () => {
+  const request = vi.fn(); vi.stubGlobal('fetch', request);
+  const store = useWorkbenchStore(); store.sessionId = 's1';
+  store.lastSend = { sessionId: 's1', content: 'previous' };
+  store.retryAvailable = true;
+  store.pendingAttachments = [{ kind: 'file', path: 'upload:new.txt', name: 'new.txt', text: 'new' }];
+  await store.retryLast();
+  expect(request).not.toHaveBeenCalled();
+  expect(store.pendingAttachments).toHaveLength(1);
+});
+
+describe('first-send target ownership across session opening', () => {
+  for (const action of ['send', 'queue'] as const) {
+    it(`${action}: does not post original files into a different session selected during open`, async () => {
+      let resolveFirst!: (response: Response) => void;
+      const request = vi.fn((url: string, init?: RequestInit) => {
+        if (init?.method === 'POST' && url === '/api/sessions') return Promise.resolve(jsonResponse(201, { session: { id: 'created-a', cwd: DIR_A.cwd } }));
+        if (url.includes('/created-a?')) return new Promise<Response>(resolve => { resolveFirst = resolve; });
+        if (url.includes('/events/history')) return Promise.resolve(jsonResponse(200, { events: [] }));
+        return Promise.resolve(jsonResponse(200, { session: { id: 'selected-b', cwd: DIR_A.cwd }, messages: [], last_seq: 0, items: [] }));
+      });
+      vi.stubGlobal('fetch', request);
+      const store = useWorkbenchStore();
+      store.dirCwd = DIR_A.cwd; store.inputValue = 'belongs to A';
+      store.pendingAttachments = [{ kind: 'file', path: 'upload:a.txt', name: 'a.txt', text: 'private A contents' }];
+      const pending = action === 'send' ? store.send() : store.sendQueued('follow_up');
+      // Advance promises until createSession finishes and the new session load is pending.
+      for (let i = 0; i < 20 && !resolveFirst; i++) await Promise.resolve();
+      expect(resolveFirst).toBeDefined();
+      await store.openSession('selected-b');
+      resolveFirst(jsonResponse(200, { session: { id: 'created-a' }, messages: [], last_seq: 0 }));
+      await pending;
+      const messagePosts = request.mock.calls.filter(([url, init]) => init?.method === 'POST' && url !== '/api/sessions');
+      expect(messagePosts).toEqual([]);
+      expect(store.sessionId).toBe('selected-b');
+      // Returning to A restores the captured unsent text and files.
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => jsonResponse(200, url.includes('/events/history')
+        ? { events: [] } : { session: { id: 'created-a' }, messages: [], last_seq: 0 })));
+      await store.openSession('created-a');
+      expect(store.inputValue).toBe('belongs to A');
+      expect(store.pendingAttachments[0]?.text).toBe('private A contents');
+    });
+  }
 });

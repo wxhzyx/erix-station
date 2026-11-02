@@ -10,6 +10,7 @@
 // vue-router，见 M3）；store 通过 onClearRoute 钩子请视图清路由（等价旧 clearRoute()）。
 // SSE 协议状态在 useEventStream composable 内（M1）。
 import { defineStore } from 'pinia';
+import type { WorkAttachment } from '../lib/workAttachments';
 import { computed, ref, watch } from 'vue';
 import { api, ApiError, patchSessionTitle, postSessionAiTitle, toDisplayText } from '../api';
 import { projectionRoundToken, runSegment, toolCardKey as buildToolCardKey } from '../lib/toolCardKey';
@@ -317,6 +318,10 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   const ownedBy = ref<string | null>(null);
   const entries = ref<StreamEntry[]>([]); // 消息流（含分隔行/工具卡片占位）
   const renderedIds = ref<Set<string> | null>(null); // 去重（refresh 与流式缓冲竞态）
+  const pendingAttachments = ref<WorkAttachment[]>([]);
+  const attachmentDrafts = new Map<string, WorkAttachment[]>();
+  const messageSubmitting = ref(false);
+  watch([sessionId, dirCwd], () => { pendingAttachments.value = []; }, { flush: 'sync' });
   const inputValue = ref(''); // composer 输入（旧 $('input').value）
   // issue #370：输入队列（运行中说话）。**服务端是唯一真相**（`queued_inputs` 表），本 ref 只是投影：
   //   * 入队成功 → 本地先乐观插一条（消除「点了没反应」的空窗）；
@@ -344,7 +349,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   // **仅内存、不持久化**（无 localStorage / 无后端回写）：刷新页面 = 重建 store ⇒ lastSend 与
   // retryAvailable 双双归零，按钮不再出现。这是 MVP 边界（工单明确不做「刷新后恢复重试面」）。
   // 刷新后要恢复，得把「最后一条 user 消息 + 该 run 终态」从服务端转录重建，不属本单范围。
-  const lastSend = ref<{ sessionId: string; content: string } | null>(null);
+  const lastSend = ref<{ sessionId: string; content: string; attachments?: WorkAttachment[] } | null>(null);
   const retryAvailable = ref(false);
   // in-flight 禁用闸（防双击双发）：重试 POST 往返窗口里 activeRunId 尚未置位（send 在 POST
   // 回来后才置），running 仍为 false —— 只靠 running 拦不住第二次点击。
@@ -397,7 +402,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   const running = computed(() => es.activeRunId.value != null);
   // issue #370：**运行中不再禁用发送**——那句话改走队列，而不是「等一等再说」。
   // 唯一保留的禁用条件是「没有目录」（无从建会话）与「会话/入队 POST 在途」（防双击双发）。
-  const sendDisabled = computed(() => noDir.value || queueSubmitting.value);
+  const sendDisabled = computed(() => noDir.value || queueSubmitting.value || messageSubmitting.value);
   const inputPlaceholder = computed(() =>
     // #332：原先第三态「平台管理员：请到管理台…」已随入口拦截拆掉（不可达）。
     // #370 加运行中一态：文案直接告诉用户 Enter 是转向、Alt+Enter 是排队（agegr/pi-web 的
@@ -421,6 +426,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   // ---- 草稿（saveDraft 三路径共用：openSession / selectDir / resetSessionView）----
   // 评审修复：统一的草稿暂存——有值 set、空值 delete（恢复后手动清空须能真正清掉）；无选中会话不动。
   function saveDraft() {
+    if (sessionId.value) attachmentDrafts.set(sessionId.value, [...pendingAttachments.value]);
     if (!sessionId.value) return;
     const v = inputValue.value;
     if (v) drafts.set(sessionId.value, v);
@@ -864,6 +870,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     saveDraft();
     inputValue.value = drafts.get(id) ?? '';
     sessionId.value = id;
+    pendingAttachments.value = attachmentDrafts.get(id) ?? [];
     es.resetStreamState();
     momentum.reset(); // issue #282：离开/切换会话不复用上一个会话的动量数字
     clearRetryFace(); // issue #261B：离开/换开会话（selectDir / openSession / createDir / resetSessionView）⇒ 重试面重置
@@ -1212,6 +1219,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     // ⑤ 输入面：草稿是「上一个账号打了一半的话」，绝不能出现在新账号的输入框里
     //    （`drafts` 按 sessionId 键，同 id 理论上不会撞，但整个 Map 必须跟着人走）。
     drafts.clear();
+    attachmentDrafts.clear();
+    pendingAttachments.value = [];
+    messageSubmitting.value = false;
     inputValue.value = '';
     // ⑥ 队列（#370）与一键重试（#261B）以及各种在途闸门
     applyQueueSnapshot({ steering: [], follow_up: [] });
@@ -1252,8 +1262,19 @@ export const useWorkbenchStore = defineStore('workbench', () => {
    * 重试绝不另起一次 api() 调用——绕过这里就等于绕过建会话/草稿/代次守卫（工单硬要求）。
    */
   async function send(contentOverride?: string) {
+    if (messageSubmitting.value || queueSubmitting.value) return;
+    if (typeof contentOverride !== 'string' && es.activeRunId.value) return sendQueued('steer');
+    messageSubmitting.value = true;
+    const scope = scopeSeq.value;
+    try { await sendNow(contentOverride); }
+    finally { if (scope === scopeSeq.value) messageSubmitting.value = false; }
+  }
+
+  async function sendNow(contentOverride?: string) {
+    const scope = scopeSeq.value;
     const override = typeof contentOverride === 'string';
-    const content = (override ? contentOverride! : inputValue.value).trim();
+    const attachments = override ? (lastSend.value?.attachments ?? []) : [...pendingAttachments.value];
+    const content = (override ? contentOverride! : inputValue.value).trim() || (attachments.length ? '请查看上传的文件。' : '');
     if (!content) return;
     // issue #370：运行中的 Enter 不再是 no-op（旧行为：`es.activeRunId` 非空直接 return，用户以为
     // 发出去了、其实什么都没发生），而是**转向**。守卫顺序也因此变成「先判有没有内容，再判在不在跑」。
@@ -1267,12 +1288,23 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     // 用户「选目录→打字→发送」没有任何反馈）。目录未选中（空 projects）才保持 no-op。
     if (!sessionId.value) {
       if (!dirCwd.value) return;
+      const creationContext = ctxSeq.value;
+      const creationRequest = sessionReqSeq.value;
       const created = await createSession();
-      if (!created) return; // 建会话失败已 alert，输入内容保留
+      if (!created || scope !== scopeSeq.value) return; // 建会话失败/换人不恢复旧草稿
+      drafts.set(created.id, content);
+      attachmentDrafts.set(created.id, attachments);
+      if (ctxSeq.value !== creationContext || sessionReqSeq.value !== creationRequest || sessionId.value) return;
       // createSession 只建不开（开=视图层路由职责）；发送链路里必须显式打开，
       // 否则 sid 仍为空、消息发不出（18:32 真机实证：会话建了、输入还在）。
-      await openSession(created.id);
+      const intendedContext = ctxSeq.value;
+      const opening = openSession(created.id);
+      const intendedRequest = sessionReqSeq.value;
+      await opening;
+      if (scope !== scopeSeq.value || ctxSeq.value !== intendedContext
+        || sessionReqSeq.value !== intendedRequest || sessionId.value !== created.id) return;
     }
+    if (scope !== scopeSeq.value) return;
     const ctx = ctxSeq.value;
     const sid = sessionId.value;
     if (!sid) return;
@@ -1284,24 +1316,30 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     try {
       const { message, run } = await api<{ message: ChatMessage; run: { id: string } }>(
         `/api/sessions/${encodeURIComponent(sid)}/messages`,
-        { method: 'POST', body: JSON.stringify({ content, attachments: [] }) },
+        { method: 'POST', body: JSON.stringify({ content, attachments }) },
       );
+      if (scope !== scopeSeq.value) return;
       // 评审修复：API 成功返回后才删草稿，且在守卫判定之前无条件执行（原先 await 前删，失败即丢草稿）。
       drafts.delete(sid);
+      attachmentDrafts.delete(sid);
       // issue #261B：POST 成功即记「上一条」（失败路径不记，否则会把没发出去的内容当成可重试面）。
       // 同时作废旧的失败重试面：用户已主动发新东西，不必再保留上一条的入口。
-      lastSend.value = { sessionId: sid, content };
+      lastSend.value = { sessionId: sid, content, ...(attachments.length ? { attachments } : {}) };
       retryAvailable.value = false;
       if (ctx !== ctxSeq.value || sessionId.value !== sid) return;
+      if (!override) pendingAttachments.value = [];
       addMessage({ ...message, role: 'user' });
       es.activeRunId.value = run.id;
       // issue #282：POST 返回 run id = 我们知道的最早起跑时刻（用户刚发出），登记给动量状态条。
       momentum.beginRun(run.id);
       loadSessions();
     } catch (e) {
+      if (scope !== scopeSeq.value) return;
       // 评审修复：草稿按 sid 键，守卫之前写回——发送失败后即使期间切走会话，切回仍可恢复。
+      if (scope === scopeSeq.value) attachmentDrafts.set(sid, attachments);
       drafts.set(sid, content);
       if (ctx !== ctxSeq.value || sessionId.value !== sid) return;
+      if (!override) pendingAttachments.value = attachments;
       if (!override) inputValue.value = content; // issue #42：发送失败回填输入，已输入内容不丢
       const err = e instanceof ApiError ? e : null;
       entries.value.push({
@@ -1337,7 +1375,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     if (!retryAvailable.value || retryInFlight.value) return;
     if (!sessionId.value || es.activeRunId.value) return;
     if (!last || last.sessionId !== sessionId.value || !last.content.trim()) return;
-    if (inputValue.value.trim()) return;
+    if (inputValue.value.trim() || pendingAttachments.value.length) return;
     retryInFlight.value = true; // 按钮禁用（防双击双发）
     try {
       await send(last.content);
@@ -1382,21 +1420,41 @@ export const useWorkbenchStore = defineStore('workbench', () => {
    * 那等于把同一个竞态重新请回来（pi 源码注释称之为 *strand a message in an idle queue*）。
    */
   async function sendQueued(kind: 'steer' | 'follow_up' = 'steer') {
-    const content = inputValue.value.trim();
+    if (queueSubmitting.value || messageSubmitting.value) return;
+    queueSubmitting.value = true;
+    const scope = scopeSeq.value;
+    try { await sendQueuedNow(kind); }
+    finally { if (scope === scopeSeq.value) queueSubmitting.value = false; }
+  }
+
+  async function sendQueuedNow(kind: 'steer' | 'follow_up') {
+    const scope = scopeSeq.value;
+    const attachments = [...pendingAttachments.value];
+    const content = inputValue.value.trim() || (attachments.length ? '请查看上传的文件。' : '');
     if (!content) return;
     // 目录守卫与 send() 逐字同口径：**只有「还没有会话」时才要求先选目录**（已有会话就带着它发）。
     // 写成 `!dirCwd` 一律拦，会让「刷新后 dirCwd 还没恢复但会话已知」这种正常状态下的队列按键变哑。
     if (!sessionId.value && (!dirCwd.value || noDir.value)) return;
-    const ctx = ctxSeq.value;
     // 没有会话时先建再发（与 send() 同一条前置语义，不能只在新会话首条上支持队列）
     let targetSid = sessionId.value;
     if (!targetSid) {
+      const creationContext = ctxSeq.value;
+      const creationRequest = sessionReqSeq.value;
       const created = await createSession();
-      if (!created) return;
-      await openSession(created.id);
-      targetSid = sessionId.value;
-      if (!targetSid) return;
+      if (!created || scope !== scopeSeq.value) return;
+      drafts.set(created.id, content);
+      attachmentDrafts.set(created.id, attachments);
+      if (ctxSeq.value !== creationContext || sessionReqSeq.value !== creationRequest || sessionId.value) return;
+      const intendedContext = ctxSeq.value;
+      const opening = openSession(created.id);
+      const intendedRequest = sessionReqSeq.value;
+      await opening;
+      if (scope !== scopeSeq.value || ctxSeq.value !== intendedContext
+        || sessionReqSeq.value !== intendedRequest || sessionId.value !== created.id) return;
+      targetSid = created.id;
     }
+    if (scope !== scopeSeq.value) return;
+    const ctx = ctxSeq.value;
     queueSubmitting.value = true;
     inputValue.value = ''; // 先清输入框：入队是「已交接」，不是「待发送的草稿」
     const optimistic: QueuedInputItem = { id: `local-${Date.now()}`, content };
@@ -1406,10 +1464,13 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     try {
       const res = await api<{ posted: unknown; queued: { id: string; content: string } | null }>(
         `/api/sessions/${encodeURIComponent(targetSid)}/queued-inputs`,
-        { method: 'POST', body: JSON.stringify({ content, attachments: [], kind }) },
+        { method: 'POST', body: JSON.stringify({ content, attachments, kind }) },
       );
-      if (ctx !== ctxSeq.value || sessionId.value !== targetSid) return; // 切走了：草稿与队列都不再是它的
+      if (scope !== scopeSeq.value) return;
       drafts.delete(targetSid);
+      attachmentDrafts.delete(targetSid);
+      if (ctx !== ctxSeq.value || sessionId.value !== targetSid) return; // 已投递草稿先清理，再丢弃旧视图响应
+      pendingAttachments.value = [];
       if (res.posted) {
         // 服务端裁决成「直接发」（点下去的那一刻没有活跃 run）：走与 send() 相同的渲染面。
         const posted = res.posted as { message?: ChatMessage; run?: { id: string } };
@@ -1425,8 +1486,11 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       }
       // 真入队那一路不用做任何渲染：`queue_update` 全量快照马上会覆盖本地乐观值。
     } catch (e) {
+      if (scope !== scopeSeq.value) return;
+      attachmentDrafts.set(targetSid, attachments);
       drafts.set(targetSid, content); // 失败回填草稿（口径同 send()）
       if (ctx !== ctxSeq.value || sessionId.value !== targetSid) return;
+      pendingAttachments.value = attachments;
       inputValue.value = content;     // 话没交出去 ⇒ 回到输入框
       queuedInputs.value = before;    // 撤销乐观条目
       // 错误面复用 `errors.sendFailed`（#294 设计：入队失败 = 发送失败，一个出口一种说法）。
@@ -1434,8 +1498,6 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       // ApiError.message 是服务端 message 的**唯一出口**——另开文案只会让同一件事有两种说法
       //（#276 拆 errorMap 时立的规矩）。
       entries.value.push({ kind: 'syserr', text: t('errors.sendFailed', { message: e instanceof Error ? e.message : String(e) }) });
-    } finally {
-      queueSubmitting.value = false;
     }
   }
 
@@ -1445,29 +1507,35 @@ export const useWorkbenchStore = defineStore('workbench', () => {
    * **取回的文本在前、用户已打的草稿在后，中间空一行**。
    */
   async function recallQueue() {
+    const scope = scopeSeq.value;
     const sid = sessionId.value;
     if (!sid) return;
     // issue #431：取回是 DELETE，服务端**已经**把整队掏走了 ⇒ 迟到时不能简单丢弃（丢 = 文本两头没），
-    // 也不能直接写输入框（那是下一个账号/会话的输入框）。口径照 `sendQueued` 失败分支的先例：
+    // 同一账号切会话时不能直接写新输入框，应按原 sid 留草稿；但换账号后必须丢弃迟到响应，
+    // 不得重新填充已经清空的旧用户草稿集合。scope 守卫先于任何写入。口径照 sendQueued：
     // **守卫之前先按原会话存回 `drafts`**（切回那个会话还在），守卫之后才跳过界面写入。
     const ctx = ctxSeq.value;
     try {
-      const res = await api<{ recalled: { steering: string[]; follow_up: string[] } }>(
+      const res = await api<{ recalled: { steering: string[]; follow_up: string[]; attachments?: WorkAttachment[] } }>(
         `/api/sessions/${encodeURIComponent(sid)}/queued-inputs`, { method: 'DELETE' },
       );
+      if (scope !== scopeSeq.value) return;
       const texts = [...(res.recalled?.steering ?? []), ...(res.recalled?.follow_up ?? [])]
         .filter((x) => x && x.trim());
       if (ctx !== ctxSeq.value || sessionId.value !== sid) {
+        if (scope === scopeSeq.value) attachmentDrafts.set(sid, [...(res.recalled?.attachments ?? []), ...(attachmentDrafts.get(sid) ?? [])]);
         if (texts.length > 0) {
           const kept = [...texts, drafts.get(sid) ?? ''].filter((x) => x).join('\n\n');
           drafts.set(sid, kept);
         }
         return;
       }
+      pendingAttachments.value = [...(res.recalled?.attachments ?? []), ...pendingAttachments.value];
       const current = inputValue.value.trim();
       inputValue.value = [...texts, current].filter((x) => x).join('\n\n');
       applyQueueSnapshot({ steering: [], follow_up: [] }); // 服务端已清空，本地立刻跟上（SSE 也会再来一帧）
     } catch (e) {
+      if (scope !== scopeSeq.value) return;
       alert(t('errors.sendFailed', { message: e instanceof Error ? e.message : String(e) }));
     }
   }
@@ -1528,7 +1596,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     dirs, dirCwd, sessions, sessionId, noDir,
     // issue #428：`sessionMessageCount` 原本只内部用（#197 消息数口径），导出只为给换账号复位钉用例
     sessionMessageCount,
-    entries, renderedIds, inputValue, creatingSession,
+    entries, renderedIds, inputValue, pendingAttachments, messageSubmitting, creatingSession,
     olderMessagesCursor, olderEventsCursor, olderLoading, olderPrependSeq,
     drafts, es,
     // issue #428：换账号复位的两个入口（`ownedBy` 不外露：它是实现细节，不是界面状态）

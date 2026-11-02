@@ -137,11 +137,11 @@ describe('PreviewPortsPanel · 加载中 / 空 / 失败三态', () => {
   it('本人空列表 ⇒ 「你还没有预览端口」；代看空列表 ⇒ 「该 FDE 没有活着的预览端口」', () => {
     wrapper = mountPanel({ items: [] });
     expect(wrapper.find('[data-test="preview-ports-empty"]').exists()).toBe(true);
-    expect(wrapper.get('[data-test="preview-ports-empty"]').text()).toContain('你还没有预览端口');
+    expect(wrapper.get('[data-test="preview-ports-empty"]').text()).toContain('暂无预览端口');
     wrapper.unmount();
 
     wrapper = mountPanel({ items: [], scope: 'fde', fdeName: 'alice' });
-    expect(wrapper.get('[data-test="preview-ports-empty"]').text()).toContain('该 FDE 没有活着的预览端口');
+    expect(wrapper.get('[data-test="preview-ports-empty"]').text()).toContain('暂无预览端口');
     expect(wrapper.get('[data-test="preview-ports-panel-body"]').text()).toContain('alice 的预览端口');
   });
 

@@ -185,8 +185,10 @@ export async function chatCompletion({
   });
 
   let res;
+  let raw;
   try {
-    const pending = fetchImpl(url, {
+    const pending = (async () => {
+      const response = await fetchImpl(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -195,9 +197,38 @@ export async function chatCompletion({
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
-    });
+      });
+      // Bound response memory and include body consumption in the same timeout.
+      // Native fetch streams are capped before assembling; text-only test doubles
+      // retain compatibility but still participate in the deadline.
+      const maxBytes = 8 * 1024 * 1024;
+      const tooLarge = () => fail('llm_upstream_failed', 'LLM 响应超过 8 MiB 上限', 502, { reason: 'response_too_large' });
+      if (Number(response.headers?.get?.('content-length')) > maxBytes) { controller.abort(); throw tooLarge(); }
+      let text;
+      if (response.body?.getReader) {
+        const reader = response.body.getReader();
+        const chunks = [];
+        let bytes = 0;
+        try {
+          while (true) {
+            const item = await reader.read();
+            if (item.done) break;
+            bytes += item.value.byteLength;
+            if (bytes > maxBytes) { controller.abort(); void reader.cancel().catch(() => {}); throw tooLarge(); }
+            chunks.push(Buffer.from(item.value));
+          }
+          text = Buffer.concat(chunks).toString('utf8');
+        } finally { reader.releaseLock(); }
+      } else {
+        text = await response.text();
+        if (Buffer.byteLength(text) > maxBytes) throw tooLarge();
+      }
+      return { response, text };
+    })();
     pending.catch(() => {}); // 输掉竞速后的异步拒绝不该变成 unhandled rejection
-    res = await Promise.race([pending, budget]);
+    const result = await Promise.race([pending, budget]);
+    res = result.response;
+    raw = result.text;
   } catch (err) {
     const reason = timedOut
       ? `上游调用超时（>${timeoutLabel(timeoutMs)}）`
@@ -211,7 +242,6 @@ export async function chatCompletion({
     if (timer !== null) clearTimeout(timer);
   }
 
-  const raw = await res.text().catch(() => '');
   if (!res.ok) {
     // 只回显上游 error.message（脱敏 + 截断），不回显整个响应体，也不带请求头。
     let hint = '';

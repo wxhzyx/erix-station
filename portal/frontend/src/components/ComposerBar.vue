@@ -1,15 +1,47 @@
 <script setup lang="ts">
 // composer（旧 #composer 平移）：发送/停止/禁用逻辑、Enter 发送（Shift+Enter 换行）。
 // 失败回填输入与 llm_not_configured 409 指引在 store.send() 内（逐行平移）。
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { useAuthStore } from '../stores/auth';
+import { readWorkFiles } from '../lib/workAttachments';
 import { useI18n } from 'vue-i18n';
 import { useWorkbenchStore } from '../stores/workbench';
 
 // issue #101 P2：用户可见文案走 i18n（composer.*；占位符来自 store.inputPlaceholder）。
 const { t } = useI18n();
 const store = useWorkbenchStore();
+const auth = useAuthStore();
+const uploadError = ref('');
+const readingFiles = ref(false);
+const attachmentLimitError = computed(() => store.pendingAttachments.length > 8
+  || store.pendingAttachments.reduce((sum, file) => sum + new TextEncoder().encode(file.text).length, 0) > 262144
+  ? '取回的文件超出单次发送限制（8 个 / 256 KiB）。文件仍保留，请移除部分附件后分批发送。' : '');
+let mounted = true;
+let readGeneration = 0;
+watch(() => [auth.user?.id, store.sessionId, store.dirCwd], () => { readGeneration++; }, { flush: 'sync' });
+onBeforeUnmount(() => { mounted = false; readGeneration++; });
+async function selectFiles(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  input.value = '';
+  if (readingFiles.value || store.sendDisabled) return;
+  const generation = ++readGeneration;
+  const owner = auth.user?.id;
+  const sid = store.sessionId;
+  const cwd = store.dirCwd;
+  readingFiles.value = true;
+  uploadError.value = '';
+  try {
+    const attachments = await readWorkFiles(files, store.pendingAttachments);
+    if (mounted && generation === readGeneration && owner === auth.user?.id && sid === store.sessionId && cwd === store.dirCwd) store.pendingAttachments = attachments;
+  } catch (error) { if (mounted && generation === readGeneration) uploadError.value = error instanceof Error ? error.message : '文件读取失败'; }
+  finally { readingFiles.value = false; }
+}
+
 // issue #370：运行中说话（转向 / 排队）与队列条。空值提交由 store 兜底，按钮 disable 只是体验层。
 
 function onKeydown(e: KeyboardEvent) {
+  if (readingFiles.value) return;
   if (e.key !== 'Enter') return;
   if (e.altKey) {
     // issue #370：Alt+Enter = 排队（照 pi ChatInput 的 alt+Enter → followUp）。必须先于 Shift 判：
@@ -29,9 +61,21 @@ function onKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
+  <div class="work-input-area" :class="store.sessionId ? '' : 'border-t border-black/10'">
+  <div class="work-attachments px-4 pt-3 text-xs text-gray-600">
+    <label class="station-secondary inline-flex cursor-pointer rounded-lg px-3 py-2">📎 上传文件
+      <input aria-label="上传工作文件" type="file" multiple :disabled="store.sendDisabled || readingFiles" @change="selectFiles" class="sr-only" />
+    </label>
+    <span class="ml-2">文本 / 代码 · 最多 8 个 · 单个 64 KiB · 总计 256 KiB</span>
+    <div v-for="(file, index) in store.pendingAttachments" :key="index" class="inline-flex m-1 rounded bg-gray-100 px-2 py-1">
+      {{ file.name }} <button :disabled="store.sendDisabled || readingFiles" class="ml-2" :aria-label="`移除 ${file.name}`" @click="store.pendingAttachments.splice(index, 1)">×</button>
+    </div>
+    <p v-if="attachmentLimitError" role="alert" class="text-red-600">{{ attachmentLimitError }}</p>
+    <p v-if="uploadError" role="alert" class="text-red-600">{{ uploadError }}</p>
+  </div>
   <!-- 上沿分隔线：有选中会话时由上方 RunStatusBar 的 border-t 提供（两者读作一块，不叠两条线）；
        无会话时状态条不挂 ⇒ composer 自己带线，免得与流区粘在一起 -->
-  <div class="flex gap-2 p-2" :class="store.sessionId ? '' : 'border-t border-black/10'">
+  <div class="work-composer flex gap-2 p-3">
     <textarea
       v-model="store.inputValue"
       class="flex-1 rounded-md border border-black/20 px-3 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
@@ -45,7 +89,7 @@ function onKeydown(e: KeyboardEvent) {
          的歧义行为（store.retryLast() 同源再守一道）；② 无活跃 run；③ store.retryAvailable——上一条
          发送以 RUN_FAIL_REASONS 终局收场。in-flight（POST 往返窗口，此时 running 仍 false）禁用防双击双发。 -->
     <button
-      v-if="!store.inputValue.trim() && !store.running && store.retryAvailable"
+      v-if="!store.inputValue.trim() && !store.pendingAttachments.length && !store.running && store.retryAvailable"
       class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5 disabled:opacity-50"
       :disabled="store.retryInFlight"
       @click="store.retryLast()"
@@ -58,14 +102,14 @@ function onKeydown(e: KeyboardEvent) {
       <button
         data-queued-kind="steer"
         class="rounded-md bg-brand hover:bg-brand-hover active:bg-brand-active text-white px-4 disabled:opacity-50"
-        :disabled="!store.inputValue.trim() || store.sendDisabled"
+        :disabled="(!store.inputValue.trim() && !store.pendingAttachments.length) || store.sendDisabled || readingFiles"
         :title="t('composer.steerHint')"
         @click="store.sendQueued('steer')"
       >{{ t('composer.steer') }}</button>
       <button
         data-queued-kind="follow_up"
         class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5 disabled:opacity-50"
-        :disabled="!store.inputValue.trim() || store.sendDisabled"
+        :disabled="(!store.inputValue.trim() && !store.pendingAttachments.length) || store.sendDisabled || readingFiles"
         :title="t('composer.followUpHint')"
         @click="store.sendQueued('follow_up')"
       >{{ t('composer.followUp') }}</button>
@@ -74,7 +118,7 @@ function onKeydown(e: KeyboardEvent) {
       v-else
       data-queued-kind="send"
       class="rounded-md bg-brand hover:bg-brand-hover active:bg-brand-active text-white px-4 disabled:opacity-50"
-      :disabled="store.sendDisabled"
+      :disabled="store.sendDisabled || readingFiles"
       @click="store.send()"
     >{{ t('composer.send') }}</button>
     <!-- 停止按钮：运行中显示（旧 setRunning(on) 的显隐语义） -->
@@ -83,5 +127,6 @@ function onKeydown(e: KeyboardEvent) {
       class="rounded-md border border-red-600 text-red-600 px-4 hover:bg-red-50"
       @click="store.stop()"
     >{{ t('composer.stop') }}</button>
+  </div>
   </div>
 </template>
