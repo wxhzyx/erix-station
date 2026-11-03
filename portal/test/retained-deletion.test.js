@@ -59,6 +59,16 @@ test('failed assignment cannot delete an unrelated existing directory; cleanup r
   await assert.rejects(f.remove('alpha'),/ownership/);assert.equal(f.row.cleanup_completed_at,undefined);
   assert.ok((await fs.stat(f.target)).isDirectory());
 });
+test('legacy ready assignment without a marker can be deleted using its DB owner and exact directory',async t=>{
+  const f=await fixture(t);f.row.status='ready';await fs.unlink(path.join(f.target,'.fde-assignment.json'));
+  await f.remove('alpha');assert.ok(f.row.cleanup_completed_at);
+  await assert.rejects(fs.stat(f.target),{code:'ENOENT'});assert.ok((await fs.stat(f.other)).isDirectory());
+});
+test('failed delivery without a marker cannot remove a pre-existing conflicting directory',async t=>{
+  const f=await fixture(t);f.row.status='failed';await fs.unlink(path.join(f.target,'.fde-assignment.json'));
+  await assert.rejects(f.remove('alpha'),{code:'ENOENT'});assert.equal(f.row.cleanup_completed_at,undefined);
+  assert.ok((await fs.stat(f.target)).isDirectory());
+});
 test('project deletion refuses a symlink marker rather than reading an external owner file',async t=>{
   if(process.platform==='win32')return t.skip('POSIX symlink test runs in Linux release validation');
   const f=await fixture(t);const marker=path.join(f.target,'.fde-assignment.json');await fs.unlink(marker);

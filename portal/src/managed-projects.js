@@ -91,8 +91,15 @@ export async function deleteAssignment(pool, { id, actorId, confirmation, config
     if (exists) {
       const markerPath = path.join(target, '.fde-assignment.json');
       assertSafePath(root, markerPath);
-      const marker = JSON.parse(await fs.readFile(markerPath, 'utf8'));
-      if (marker.id !== id || marker.package_id !== a.package_id) throw new Error('Project ownership marker mismatch');
+      let marker;
+      try { marker = JSON.parse(await fs.readFile(markerPath, 'utf8')); }
+      catch (error) {
+        // Legacy ready assignments were registered from existing member-owned
+        // directories. DB ownership is authoritative for those; failed/pending
+        // deliveries may instead point at a pre-existing conflicting directory.
+        if (error.code !== 'ENOENT' || a.status !== 'ready') throw error;
+      }
+      if (marker !== undefined && (!marker || marker.id !== id || marker.package_id !== a.package_id)) throw new Error('Project ownership marker mismatch');
       try { await fs.lstat(trash); throw new Error('Project cleanup conflict'); }
       catch (e) { if (e.code !== 'ENOENT') throw e; }
       assertSafePath(root, target);
