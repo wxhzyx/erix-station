@@ -9,6 +9,9 @@ COPY runner/skills /opt/erix/skills
 COPY runner/entrypoint.sh /usr/local/bin/station-agentd-entrypoint
 COPY runner/healthcheck.sh /usr/local/bin/station-agentd-healthcheck
 RUN chmod 0755 /usr/local/bin/station-agentd-entrypoint /usr/local/bin/station-agentd-healthcheck
+# Host runner uses umask 0077. COPY preserves source modes, but agentd and worker
+# run as different non-root UIDs; program files must be readable by both.
+RUN chmod -R a+rX /opt/erix
 ARG STATION_REVISION
 ARG STATION_BUILD_DATE
 RUN node -e 'const fs=require("fs");const v=p=>JSON.parse(fs.readFileSync(p)).version;fs.writeFileSync("/opt/erix/build-info.json",JSON.stringify({station_version:v("/opt/erix/package.json"),engine_version:v("/opt/erix/node_modules/erix-agent/package.json"),revision:process.env.STATION_REVISION,built_at:process.env.STATION_BUILD_DATE})+"\n")'
