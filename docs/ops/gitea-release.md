@@ -19,6 +19,8 @@ Host runner 不提供不可信代码隔离，不能给用户项目复用，也�
 
 1. Linux 容器按三份 lockfile 安装依赖，语法检查、根/runner 单测、前端 typecheck/test/build。
 2. 编译 portal、FDE runner、Docker admission proxy 三镜像，以提交 SHA 标记并记录不可变 image ID。
+   FDE 镜像还以真实 UID 1001/1002 在只读、无网络容器中检查程序读取权限和引擎导入；
+   构建时显式赋予程序读取权限，避免 Runner 的严格 umask 被 COPY 带入后导致降权启动失败。
 3. 检查活跃 run 与数据库 advisory lock。有人正在运行或操作时拒绝上线，待空闲后重跑。
 4. 保存环境、Compose 和 PostgreSQL 逻辑备份；停止 portal，执行增量迁移。
 5. 只替换本站 portal/proxy 镜像；FDE 镜像改变时重建对应容器，保留用户卷、项目、账号和网络。

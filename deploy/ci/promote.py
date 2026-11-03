@@ -31,20 +31,22 @@ def portal_query(sql):
 
 
 def health(revision, names):
+    last_error = 'no health response'
     for _ in range(60):
         try:
             with urllib.request.urlopen('http://127.0.0.1:18080/healthz', timeout=3) as r:
                 assert r.status == 200
             if revision:
                 with urllib.request.urlopen('http://127.0.0.1:18080/version.json', timeout=3) as r:
-                    assert json.load(r)['revision'] == revision
+                    assert json.load(r)['revision'] == revision, 'portal revision mismatch'
             for name in names:
                 state = json.loads(output(['docker','inspect',name,'--format','{{json .State}}']))
-                assert state['Running'] and state.get('Health',{}).get('Status') == 'healthy'
+                assert state['Running'] and state.get('Health',{}).get('Status') == 'healthy', f"{name}: {state['Status']}, health={state.get('Health',{}).get('Status')}"
             return
-        except Exception:
+        except Exception as error:
+            last_error = str(error)
             time.sleep(2)
-    raise RuntimeError('release health/revision/FDE heartbeat verification failed')
+    raise RuntimeError(f'release health/revision/FDE heartbeat verification failed: {last_error}')
 
 
 def main():

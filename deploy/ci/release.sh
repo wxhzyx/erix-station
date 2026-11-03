@@ -26,6 +26,16 @@ docker build "${common[@]}" --build-arg "STATION_REVISION=$sha" --build-arg "STA
 docker build "${common[@]}" --build-arg "STATION_REVISION=$sha" --build-arg "STATION_BUILD_DATE=$built_at" \
   -f deploy/ci/Dockerfile.runner -t "inteva/fde-runner:$sha" .
 docker build "${common[@]}" -f deploy/ci/Dockerfile.proxy -t "inteva/fde-proxy:$sha" .
+# Check the actual image as both runtime identities before touching live services.
+for runtime_uid in 1001 1002; do
+  docker run --rm --network none --read-only --cap-drop ALL --user "$runtime_uid:1000" \
+    --entrypoint node "inteva/fde-runner:$sha" --check /opt/erix/agentd.js
+  docker run --rm --network none --read-only --cap-drop ALL --user "$runtime_uid:1000" \
+    --entrypoint node "inteva/fde-runner:$sha" --check /opt/erix/worker.js
+  docker run --rm --network none --read-only --cap-drop ALL --user "$runtime_uid:1000" \
+    --entrypoint node "inteva/fde-runner:$sha" --input-type=module -e \
+    'import fs from "node:fs"; import "erix-agent"; import "erix-agent/tools"; const scan=p=>{const s=fs.statSync(p);fs.accessSync(p,fs.constants.R_OK|(s.isDirectory()?fs.constants.X_OK:0));if(s.isDirectory())for(const n of fs.readdirSync(p))scan(`${p}/${n}`)};scan("/opt/erix");console.log(`Runtime UID ${process.getuid()}: image files readable and engine imports OK`);'
+done
 python3 - "$sha" <<'PY'
 import json,pathlib,subprocess,sys
 sha=sys.argv[1]
