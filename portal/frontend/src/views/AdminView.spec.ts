@@ -696,11 +696,11 @@ describe('AdminView · LLM 管理', () => {
     const editForm = wrapper.get('[data-test="edit-model-form"]');
     // 说明就挂在这个字段上（不是满屏找一句总括）。
     const hint = editForm.get('[data-test="edit-model-max-output-tokens-hint"]');
-    expect(hint.text()).toContain('留空 = 不修改');
+    expect(hint.text()).toContain('留空不修改');
     expect(hint.text(), '上限规则一句也要在同一处（前端不做本地校验，只靠文案）').toContain('1/4');
     // 重设按钮自己说清「只填值、不保存」（避免被当成「点一下就生效」）。
     expect(editForm.get('[data-test="reset-max-output-tokens"]').text()).toContain('按当前窗口 1/4 重设');
-    expect(editForm.text()).toContain('不会自动保存');
+    expect(editForm.text()).toContain('保存后生效');
     wrapper.unmount();
 
     // 新建表单：留空**不是**「不修改」，发的是显式 null（= 不写该键）⇒ 文案不得两边同句。
@@ -709,8 +709,8 @@ describe('AdminView · LLM 管理', () => {
     ));
     await add.wrapper.get('[data-test="open-add-model"]').trigger('click');
     const addForm = add.wrapper.get('[data-test="add-model-form"]');
-    expect(addForm.text()).toContain('新建时留空 = 不写这个字段');
-    expect(addForm.text()).not.toContain('留空 = 不修改');
+    expect(addForm.text()).toContain('留空使用上下文窗口的 1/4');
+    expect(addForm.text()).not.toContain('留空不修改');
     add.wrapper.unmount();
   });
 
@@ -848,8 +848,8 @@ describe('AdminView · LLM 管理', () => {
     expect((displayName.element as HTMLInputElement).value).toBe('GPT-4o 展示名');
     expect(callName.attributes('required')).toBeDefined();
     const labels = editForm.text();
-    expect(labels).toContain('FDE 请求实际发的名字');
-    expect(labels, '显示名一句说明要点明它只影响展示').toContain('不影响 FDE 请求里发的名字');
+    expect(labels).toContain('API 请求使用的名称');
+    expect(labels, '显示名一句说明要点明它只影响展示').toContain('仅修改显示名称');
     wrapper.unmount();
   });
 
@@ -933,7 +933,7 @@ describe('AdminView · LLM 管理', () => {
     await editForm.trigger('submit.prevent');
     await flushPromises();
 
-    expect(wrapper.get('[data-test="edit-model-call-name-error"]').text()).toContain('调用名不能为空');
+    expect(wrapper.get('[data-test="edit-model-call-name-error"]').text()).toContain('请输入调用名');
     expect(callsTo(fetchFn, 'PATCH', '/api/admin/llm/models/m1')).toHaveLength(0);
     wrapper.unmount();
   });

@@ -1132,22 +1132,24 @@ export function sanitizeListeners(raw) {
   return out;
 }
 
-async function recordPortObservations(pool, { container, user, listeners, log = console }) {
+export async function recordPortObservations(pool, { container, user, listeners, log = console }) {
   const rows = sanitizeListeners(listeners);
   if (rows === null) return;
+  let client;
   try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    // Serialize replacement heartbeats for this container; readers see either full snapshot.
+    await client.query('SELECT id FROM containers WHERE id = $1 FOR UPDATE', [container.id]);
     // #361：先拿旧板面，写完比集合——只在占用**翻转**时触发重刷 ports.json（in_use 咨询位），
     // 不跟 15s 心跳节拍全量物化。比较必须在 DELETE 前读，DELETE+INSERT 本身无条件幂等照写。
-    let prevPorts = null;
-    try {
-      const prev = await pool.query(`SELECT port FROM port_observations WHERE container_id = $1`, [container.id]);
-      prevPorts = new Set(prev.rows.map((r) => Number(r.port)));
-    } catch {
-      // 旧板面读不到 ⇒ 保守当作翻转，刷一次
-    }
-    await pool.query(`DELETE FROM port_observations WHERE container_id = $1`, [container.id]);
+    // A query failure aborts a PostgreSQL transaction: roll back the whole snapshot,
+    // rather than catching it and attempting writes in an already-aborted transaction.
+    const prev = await client.query(`SELECT port FROM port_observations WHERE container_id = $1`, [container.id]);
+    const prevPorts = new Set(prev.rows.map((r) => Number(r.port)));
+    await client.query(`DELETE FROM port_observations WHERE container_id = $1`, [container.id]);
     for (const r of rows) {
-      await pool.query(
+      await client.query(
         `INSERT INTO port_observations (fde_id, container_id, port, pid, cwd, cmd, branch, proc_started_at, observed_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
          ON CONFLICT (container_id, port) DO UPDATE
@@ -1157,9 +1159,11 @@ async function recordPortObservations(pool, { container, user, listeners, log = 
         [user.id, container.id, r.port, r.pid, r.cwd, r.cmd, r.branch, r.startedAt],
       );
     }
+    await client.query('COMMIT');
+    client.release();
+    client = null; // Outbox uses pool; never hold its only connection while waiting for it.
     const nowPorts = new Set(rows.map((r) => r.port));
-    const flipped = prevPorts === null
-      || prevPorts.size !== nowPorts.size
+    const flipped = prevPorts.size !== nowPorts.size
       || [...prevPorts].some((p) => !nowPorts.has(p));
     if (flipped) {
       // 单独兜底：刷文件是咨询位更新，失败不得把整块观测写入标成失败。
@@ -1170,7 +1174,10 @@ async function recordPortObservations(pool, { container, user, listeners, log = 
       }
     }
   } catch (err) {
+    await client?.query('ROLLBACK').catch(() => {});
     log.warn?.(`[internal] port_observations 写入失败（观测层，心跳继续）：${err?.code || err?.message}`);
+  } finally {
+    client?.release();
   }
 }
 

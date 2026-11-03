@@ -57,6 +57,7 @@ function getGatewayClient(candidate) {
     masterKey: config.llmGatewayMasterKey ?? process.env.LLM_GATEWAY_MASTER_KEY ?? '',
     fetchImpl: config.fetchImpl ?? fetch,
     timeoutMs: config.timeoutMs,
+    teamId: config.llmGatewayTeamId ?? process.env.LLM_GATEWAY_TEAM_ID ?? '',
   });
 }
 
@@ -1278,6 +1279,7 @@ async function selectGatewayModels(gateway, { providerId, mainModelId, embedding
 }
 
 async function ensureGatewayUser(client, { fdeName, userId }) {
+  if (client.teamId) return client.ensureStationMember({id:userId,login:fdeName});
   const result = await client.createUser({ user_email: `fde-${fdeName}@station.invalid` });
   const gatewayUserId = result?.user_id ?? result?.id;
   if (typeof gatewayUserId !== 'string' || !gatewayUserId) {
@@ -1301,7 +1303,9 @@ function isMissingGatewayKeyError(error) {
 }
 
 async function generateFdeKey(client, { fdeId, fdeName, gatewayUserId, selectedModels }) {
-  const userId = gatewayUserId || await ensureGatewayUser(client, { fdeName, userId: fdeId });
+  const userId = client.teamId
+    ? await ensureGatewayUser(client, { fdeName, userId: fdeId })
+    : gatewayUserId || await ensureGatewayUser(client, { fdeName, userId: fdeId });
   const result = await client.generateKey({
     models: selectedModelNames(selectedModels),
     user_id: userId,
@@ -1425,6 +1429,10 @@ export async function setFdeLlmConfig(pool, {
         await gatewayClient.updateKey({
           key: current.api_key,
           models: selectedModelNames(selected),
+          ...(gatewayClient.teamId ? {
+            user_id: await ensureGatewayUser(gatewayClient, {fdeName, userId}),
+            team_id: gatewayClient.teamId, metadata: {fde_id:userId, fde_name:fdeName},
+          } : {}),
         });
         generated = {
           gatewayUserId: current.gateway_user_id ?? null,

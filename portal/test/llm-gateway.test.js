@@ -3,6 +3,35 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { createLlmGatewayClient, LlmGatewayError } from '../src/llm-gateway.js';
 
+test('team client reconciles stable membership, scopes catalog and stamps generated keys', async () => {
+  const calls = [];
+  let member = false, exists = false;
+  const client = createLlmGatewayClient({adminUrl:'http://gateway.invalid',masterKey:'test',teamId:'fde-team',
+    fetchImpl: async (url, options) => {
+      const body = options.body ? JSON.parse(options.body) : null;
+      calls.push([url.pathname, body]);
+      let payload = {};
+      if (url.pathname === '/user/info') payload = {user_info:exists ? {user_id:'fde-person'} : {}};
+      if (url.pathname === '/user/new') exists = true;
+      if (url.pathname === '/team/info') payload = {team_info:{models:['fde-model'], members_with_roles:member ? [{user_id:'fde-person'}] : []}};
+      if (url.pathname === '/team/member_add') member = true;
+      if (url.pathname === '/model/info') payload = {data:[
+        {model_name:'fde-model',litellm_params:{litellm_credential_name:'fde-provider'}},
+        {model_name:'other-business',litellm_params:{litellm_credential_name:'other-provider'}},
+      ]};
+      if (url.pathname === '/credentials') payload = [{credential_name:'fde-provider'},{credential_name:'other-provider'}];
+      return new Response(JSON.stringify(payload), {status:200});
+    }});
+  assert.equal(await client.ensureStationMember({id:'person',login:'employee'}),'fde-person');
+  await client.ensureStationMember({id:'person',login:'employee'});
+  assert.equal(calls.filter(([p])=>p==='/user/new').length,1);
+  assert.equal(calls.filter(([p])=>p==='/team/member_add').length,1);
+  assert.deepEqual((await client.listModels()).data.map(m=>m.model_name),['fde-model']);
+  assert.deepEqual((await client.listCredentials()).credentials.map(c=>c.credential_name),['fde-provider']);
+  await client.generateKey({user_id:'fde-person',team_id:'caller-override'});
+  assert.equal(calls.at(-1)[1].team_id,'fde-team');
+});
+
 async function startStub(handler) {
   const server = http.createServer((req, res) => handler(req, res));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

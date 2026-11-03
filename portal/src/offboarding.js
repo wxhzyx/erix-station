@@ -4,6 +4,7 @@ import path from 'node:path';
 import { enqueueMaterializeChange, enqueueRouteChange } from './outbox.js';
 import { removeFdeContainer, removeFdeNetwork, createDockerClient, withFdeProvisioningLock } from './provisioner.js';
 import { revokeFdeLlmConfigTx } from './llm.js';
+import { revokeChatLlmConfigTx } from './mode-settings.js';
 import { removeGitCredentialFile } from './git-credential.js';
 import { assertSafePath } from './fsutil.js';
 import { validateFdeName } from './projects.js';
@@ -202,6 +203,7 @@ async function revokeLlmKey(pool, row, gateway) {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`llm-binding:${row.fde_name}`]);
     await revokeFdeLlmConfigTx(client, { fdeId: row.fde_id, fdeName: row.fde_name, gateway });
+    await revokeChatLlmConfigTx(client, row.fde_id, { gateway });
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

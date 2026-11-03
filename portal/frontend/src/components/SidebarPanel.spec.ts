@@ -7,8 +7,8 @@
 // 另覆盖：空态文案（「先创建目录」/「暂无会话」）、会话点击 emit 语义保持。
 // issue #332：这里原有「平台管理员提示 + 进入管理台链接」的空态分支已随**入口拦截**拆除（`admin && !fde_name` 的人被路由守卫送去 /admin，走不到工作台）；本文件里的 admin 夹具因此换成第 ② 类人（admin **且**有 fde_name）——他才是能站上工作台的管理员。
 // store 状态直填、fetch 桩掉（不碰真实后端）；路由用 memory-history 的真实 router（router-link 渲染需要）。
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushPromises, mount } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory } from 'vue-router';
 import SidebarPanel from './SidebarPanel.vue';
@@ -18,6 +18,10 @@ import { useAuthStore } from '../stores/auth';
 import { useWorkbenchStore } from '../stores/workbench';
 import type { DirInfo, Session } from '../stores/workbench';
 import { i18n, setLocale } from '../i18n';
+
+// All mounted sidebars own polling/freshness timers and document listeners.
+// Dispose even geometry-only fixtures, preventing state leaking into later tests.
+enableAutoUnmount(afterEach);
 
 beforeEach(() => {
   // issue #101 P2：装配真实 i18n 单例（不 mock t()），每例重置为 zh-CN（既有中文断言逐字不变）。
@@ -32,6 +36,7 @@ async function mountPanel(
   attrs: Record<string, unknown> = {},
 ) {
   const store = useWorkbenchStore();
+  store.canCreateProject = true;
   store.dirs = opts.dirs ?? [];
   store.dirCwd = opts.dirs?.[0]?.cwd ?? null;
   store.sessions = opts.sessions ?? [];
@@ -813,6 +818,7 @@ describe('SidebarPanel · 预览端口段与底部堆叠区（issue #308）', ()
       scope: 'fde',
       role: 'spare',
       exposure: 'private',
+      observed: { pid: 41, cwd: '~/projects/a', cmd: 'node', branch: null, started_at: null, observed_at: new Date().toISOString() },
     };
   }
 
@@ -876,9 +882,9 @@ describe('SidebarPanel · 预览端口段与底部堆叠区（issue #308）', ()
     // 折叠态零签票（票 60 秒过期且一次性，绝不预取）
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
     // 折叠条收起态也给可用信息：条数
-    expect(toggleOf(wrapper).text()).toContain('端口池（3 个）');
+    expect(toggleOf(wrapper).text()).toContain('运行端口（3 个）');
   });
-  it('折叠条计数=池地址数：池外观测合成行（url=null）不计入「端口池（N）」，只进进程面板', async () => {
+  it('运行端口包含没有预览地址的真实监听，且只显示一个端口面板', async () => {
     stubRoutes([
       ...THREE_PORTS,
       { id: 'observed:5173', port: 5173, hostname: null, url: null, state: 'observed',
@@ -887,8 +893,8 @@ describe('SidebarPanel · 预览端口段与底部堆叠区（issue #308）', ()
     ]);
     const wrapper = await mountPanel({ dirs: DIR });
     await tick();
-    expect(toggleOf(wrapper).text()).toContain('端口池（3 个）');
-    expect(wrapper.get('[data-test="process-watch-toggle"]').text()).toContain('进程监听（1 个）'); // 池内三行是旧形夹具（无 observed 键=旧后端语义），只有合成行带观测
+    expect(toggleOf(wrapper).text()).toContain('运行端口（4 个）');
+    expect(wrapper.find('[data-test="process-watch-toggle"]').exists()).toBe(false); // 池内三行是旧形夹具（无 observed 键=旧后端语义），只有合成行带观测
   });
 
 
@@ -997,6 +1003,6 @@ describe('SidebarPanel · 预览端口段与底部堆叠区（issue #308）', ()
     expect(portsCalls(calls)).toHaveLength(1); // 仍然是进视图那一次
     expect(wrapper.findAll('[data-test="preview-port-row"]')).toHaveLength(3);
     expect(wrapper.get('[data-test="preview-port-hostname"]').text()).toBe('alice-p-22000.fde.erix.vip');
-    expect(toggleOf(wrapper).text()).toContain('端口池（3 个）');
+    expect(toggleOf(wrapper).text()).toContain('运行端口（3 个）');
   });
 });

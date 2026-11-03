@@ -154,7 +154,7 @@ async function revokePlatformGiteaTokens({
 }
 
 async function mintGitea({
-  baseUrl, adminKey, login, previousTokenRef, fetchImpl = fetch, timeoutMs = DEFAULT_TIMEOUT_MS,
+  baseUrl, adminKey, login, previousTokenRef, allowExistingAccount = true, fetchImpl = fetch, timeoutMs = DEFAULT_TIMEOUT_MS,
 }) {
   const base = inputBase(baseUrl, adminKey, login);
   const password = randomPassword();
@@ -183,6 +183,9 @@ async function mintGitea({
       remoteLogin = user?.login ?? user?.username ?? login;
     } catch (err) {
       if (!isGiteaUserExistsError(err)) throw err;
+      if (!allowExistingAccount) {
+        throw new GitMintError('git_account_conflict', 'Gitea account already exists; administrator must verify ownership before linking', { httpStatus: 409 });
+      }
       const existing = giteaExistingUser(await requestJson({
         fetchImpl,
         timeoutMs,

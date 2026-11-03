@@ -31,6 +31,8 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('./views/ForcePasswordRouteShim.vue'),
     meta: { public: true },
   },
+  { path: '/chat/:id?', name: 'chat', component: () => import('./views/ChatView.vue') },
+  { path: '/mode-settings', name: 'mode-settings', component: () => import('./views/ModeSettingsView.vue') },
   { path: '/', name: 'workbench', component: () => import('./views/WorkbenchView.vue') },
   // issue #55 B1 深链迁入路由层：#/session/<id>（hash 模式下与旧版 URL 形态一致，刷新/分享安全）。
   { path: '/session/:id', name: 'session', component: () => import('./views/WorkbenchView.vue') },
@@ -39,6 +41,8 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('./views/AdminLayout.vue'),
     meta: { requiresRole: 'admin' },
     children: [
+      { path: 'approvals', name: 'admin-approvals', component: () => import('./views/AdminApprovalsView.vue'), meta: { requiresRole: 'admin' } },
+      { path: 'delivery', name: 'admin-delivery', component: () => import('./views/AdminDeliveryView.vue'), meta: { requiresRole: 'admin' } },
       { path: '', redirect: { name: 'admin-users' }, meta: { requiresRole: 'admin' } },
       {
         path: 'users',

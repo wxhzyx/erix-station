@@ -35,6 +35,18 @@ function jsonResponse(status, body) {
   });
 }
 
+test('SSO first provisioning refuses an existing account without resetting its password', async () => {
+  const calls = [];
+  await assert.rejects(mintGiteaAccount({
+    baseUrl: 'https://git.example', adminKey: 'test-key', login: 'sso-alice', allowExistingAccount: false,
+    fetchImpl: async (url, options) => {
+      calls.push([url, options.method]);
+      return jsonResponse(422, { message: 'user already exists' });
+    },
+  }), { code: 'git_account_conflict', httpStatus: 409 });
+  assert.deepEqual(calls, [['https://git.example/api/v1/admin/users', 'POST']]);
+});
+
 test('Gitea creates FDE user and a repository-creation/push/PR token using the generated user password', async () => {
   const calls = [];
   await withServer((req, res, text) => {

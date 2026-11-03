@@ -25,9 +25,10 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-function fetchMock(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
+function fetchMock(handler: (url: string, init?: RequestInit) => Response | Promise<Response>, providers = { sso: false, password: true }) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url === '/api/auth/providers') return jsonResponse(200, providers);
     return handler(url, init);
   });
 }
@@ -41,6 +42,7 @@ async function mountLogin() {
   const wrapper = mount(LoginView, {
     global: { plugins: [pinia, router, i18n] },
   });
+  await flushPromises();
   return { wrapper, router, auth: useAuthStore() };
 }
 
@@ -49,10 +51,38 @@ beforeEach(() => {
   localStorage.clear();
   setLocale('zh-CN');
   vi.unstubAllGlobals();
+  vi.stubGlobal('fetch', fetchMock(() => jsonResponse(200, {})));
 });
 afterEach(() => vi.unstubAllGlobals());
 
 describe('LoginView 交互', () => {
+  it('SSO enabled shows the login link and callback failure while local login stays available', async () => {
+    vi.stubGlobal('fetch', fetchMock(() => jsonResponse(200, {}), { sso: true, password: true }));
+    const { wrapper, router } = await mountLogin();
+    await flushPromises();
+    expect(wrapper.find('a[href="/api/auth/sso"]').text()).toContain('INTEVA SSO');
+    await router.replace('/login?sso_error=1');
+    expect(wrapper.findAll('[role="alert"]')[0]!.text()).toContain('SSO');
+    expect(wrapper.find('#loginName').exists()).toBe(true);
+  });
+
+  it('SSO-only has no username, password, or TOTP form', async () => {
+    vi.stubGlobal('fetch', fetchMock(() => jsonResponse(200, {}), { sso: true, password: false }));
+    const { wrapper } = await mountLogin();
+    expect(wrapper.find('a[href="/api/auth/sso"]').exists()).toBe(true);
+    expect(wrapper.find('input').exists()).toBe(false);
+    expect(wrapper.find('form').exists()).toBe(false);
+  });
+
+  it('provider discovery failure reports an error without exposing a password fallback', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    const { wrapper } = await mountLogin();
+    await flushPromises();
+    expect(wrapper.find('a[href="/api/auth/sso"]').exists()).toBe(false);
+    expect(wrapper.find('#loginName').exists()).toBe(false);
+    expect(wrapper.text()).toContain('无法加载登录方式');
+  });
+
   it('初始渲染第一步表单（登录名/口令/下一步）', async () => {
     const { wrapper } = await mountLogin();
     expect(wrapper.find('#loginName').exists()).toBe(true);

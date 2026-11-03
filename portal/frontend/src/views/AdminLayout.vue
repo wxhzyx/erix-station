@@ -18,6 +18,8 @@ const who = computed(() => {
 });
 
 const tabs = [
+  { name: 'admin-approvals', label: 'admin.tabs.approvals' },
+  { name: 'admin-delivery', label: 'admin.tabs.delivery' },
   { name: 'admin-users', label: 'admin.tabs.users' },
   { name: 'admin-llm', label: 'admin.tabs.llm' },
   { name: 'admin-repos', label: 'admin.tabs.repos' },
@@ -32,8 +34,8 @@ async function onLogout() {
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col bg-white">
-    <header class="flex items-center gap-3 border-b border-black/10 px-3 py-2">
+  <div class="station-admin min-h-screen flex flex-col">
+    <header class="station-header flex flex-wrap items-center gap-3">
       <h1 class="text-xl font-medium mb-0">{{ t('admin.title') }}</h1>
       <span class="flex-1 text-black/50 text-sm">{{ who }}</span>
       <router-link to="/" class="text-sm underline">{{ t('admin.backToWorkbench') }}</router-link>

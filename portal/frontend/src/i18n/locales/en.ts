@@ -31,6 +31,9 @@ export const en = {
     en: 'English',
   },
   login: {
+    sso: 'Sign in with INTEVA SSO',
+    providerError: 'Unable to load sign-in methods. Please refresh and try again.',
+    ssoError: 'SSO sign-in failed or expired. Please retry or contact an administrator.',
     title: 'Sign in to FDE Station',
     loginName: 'Login name',
     password: 'Password',
@@ -167,6 +170,18 @@ export const en = {
       visibilityNoSummary: '{n} rounds of original text are no longer visible to the model, and this fold produced no summary — use “View original” to read them.',
       visibilityBare: 'This original text is no longer visible to the model; the summary below is all that remains.',
       visibilityNoSummaryBare: 'This original text is no longer visible to the model, and this fold produced no summary — use “View original” to read them.',
+      // issue #440: the first two of the **three states** (data comes from the ledger's `foldedFacts`, not
+      // from `hasSummary`). The first state must say "LLM semantic summary" out loud: `fold-llm` writes the
+      // literal `"missing"` into `record.summary`, so the old copy claimed "this fold produced no summary"
+      // while the ledger held a 2048 B semantic summary — that is exactly the #440 symptom.
+      visibilityLlm: '{n} rounds of original text are no longer visible to the model; what remains is an LLM semantic summary (fold-llm) — use “View original” for the full detail.',
+      visibilityLlmBare: 'This original text is no longer visible to the model; what remains is an LLM semantic summary (fold-llm) — use “View original” for the full detail.',
+      // Second state: mechanical substitute only (fold-statistical). Say plainly that there is no LLM
+      // semantic summary; do not dress the mechanical substitute up as one.
+      visibilityMechanical: '{n} rounds of original text are no longer visible to the model; only a mechanical substitute (fold-statistical) remains — no LLM semantic summary. Use “View original” for the detail.',
+      visibilityMechanicalBare: 'This original text is no longer visible to the model; only a mechanical substitute (fold-statistical) remains — no LLM semantic summary. Use “View original” for the detail.',
+      // The "summary was clamped" marker (ledger `truncated:true`) rides on the same line: no new UI.
+      summaryTruncated: ' (the summary was too long and has been clamped; use “View original” for the full text.)',
       viewOriginal: 'View original',
       // #388: the original block's own collapse entry (hides only, never clears the cache; re-expanding does not refetch)
       collapseOriginal: 'Collapse original',
@@ -248,6 +263,11 @@ export const en = {
       capabilityDegraded: 'store lacks the {method} capability: that persistence is skipped for this run (no mid-run crash resume)',
       resumeJournalSkipped: '{count} tool result(s) from the crash round (round {round}) were not written to the ledger; the next resume relies on the snapshot',
       resumeJournalSome: 'some',
+      // issue #438 slice B (erix-agent 0.29.0): the two display-class diagnostics the LoopEvent union
+      // grew. Missing numbers are already normalised to "?" by the caller (#283); foreign identifiers
+      // go through the shape gate (#261). This text must not invent a number.
+      compactionDeferred: 'compaction deferred this round: the request tail is an assistant tool_use without its tool_result (round {round}, {reason}); the next round folds it',
+      budgetBelowWorkingSet: 'still over budget after folding: working set {workingSet} tokens > budget {budget} tokens ({attempts} consecutive attempts), so this run ends early; the engine suggests budget >= {suggested}',
       recovering: 'Retrying ({attempt}/{max})',
       recovered: 'Retry succeeded',
       // issue #321 (erix-station): the judge is forever only an **opinion**, never an acceptance — shown on
@@ -441,9 +461,10 @@ export const en = {
     poolToggle: 'Port pool',
     poolToggleCount: 'Port pool ({count})',
     poolToggleFailed: 'Port pool (failed to load)',
-    procToggle: 'Process listeners',
-    procToggleCount: 'Listeners ({count})',
-    procEmpty: 'No project processes are listening.',
+    procToggleFailed: 'Running ports (load failed)',
+    procToggle: 'Running ports',
+    procToggleCount: 'Running ports ({count})',
+    procEmpty: 'No fresh port listeners observed.',
     spareGroup: 'Spare ({count})',
     currentBadge: 'Current',
     colPort: 'Port',
@@ -480,8 +501,8 @@ export const en = {
     duplicateWarn: '⚠ {cwd} is open on both {ports} at the same time — likely two versions coexisting. Check which one you want (leftovers from ended tasks do not close themselves).',
     unroutedNote: 'This app cannot be opened at a preview address yet — ask your assistant to move it to an assigned port.',
     stateHint: '“Admitted once” only means the first credential was admitted; it does not mean an app is listening in the container.',
-    emptySelf: 'You have no preview ports yet (the platform has not assigned a block, or all of them were released).',
-    emptyFde: 'This FDE has no live preview ports (not onboarded yet, or already offboarded).',
+    emptySelf: 'No preview ports',
+    emptyFde: 'No preview ports',
     loadFailed: 'Failed to load preview ports ({code}): {message}',
     ticketFailed: 'Failed to issue the preview ticket ({code}): {message}',
     // issue #256 delivery 2: same for the single-ticket 429
@@ -538,6 +559,8 @@ export const en = {
     expand: 'Expand',
     collapse: 'Collapse',
     tabs: {
+      approvals: 'Approvals',
+      delivery: 'Projects & quotas',
       label: 'Admin sections',
       users: 'User management',
       llm: 'LLM management',
@@ -584,15 +607,15 @@ export const en = {
     },
     llm: {
       sectionTitle: 'LLM providers',
-      emptyProviders: 'No providers yet; add one below.',
+      emptyProviders: 'No providers',
       modelsCount: 'Models ({count})',
       collapseModels: 'Hide models',
       emptyModels: 'No models under this provider yet',
-      colCallName: 'Call name (what FDE requests actually send)',
+      colCallName: 'API name',
       colDisplayName: 'Display name',
-      editCallNameHint: 'The data-plane name: it is what FDE requests send, and what `fde_llm_bindings.*_model_name` and the virtual key allow-list store. Renaming propagates immediately to those FDE bindings and allow-lists (old and new names both stay, in-flight requests keep working).',
-      editDisplayNameHint: 'Changes only the label shown in the admin console and pickers; it does not change what FDE requests send.',
-      callNameRequired: 'Call name cannot be empty: it is the name FDE requests actually send.',
+      editCallNameHint: 'Name used in API requests. Changes are synced to user configurations.',
+      editDisplayNameHint: 'Changes the display name only.',
+      callNameRequired: 'Enter an API name.',
       duplicateCallName: 'Duplicate call name',
       duplicateCallNameHint: 'Several models share this call name: the gateway selects deployments by name, so requests round-robin between them while the model list shows only one.',
       confirmCallNameTitle: 'Confirm call-name change',
@@ -607,11 +630,11 @@ export const en = {
       colMaxOutputTokens: 'Output budget cap (tokens)',
       // #314: "blank = no change" has to be spelled out, together with the create/edit asymmetry
       // (create sends an explicit `null`, edit omits the field) — that asymmetry is the confusion source.
-      maxOutputTokensHint: 'The engine uses this as the output budget cap for a single response. Cap = 1/4 of the context window (validated by the server; anything above is rejected). On create, leaving it blank means the field is not sent at all (not "no change" — there is nothing to keep yet); the backend then assumes 1/4 of the window and ships that as the effective value.',
-      editMaxOutputTokensHint: 'Blank = no change (the edit form sends a PATCH, so a blank field is simply omitted). Cap = 1/4 of the context window; the server rejects anything above it. The list always shows the effective value (1/4 of the window when nothing was configured).',
+      maxOutputTokensHint: 'Default and maximum: 1/4 of the context window.',
+      editMaxOutputTokensHint: 'Leave blank to keep the current value. Maximum: 1/4 of the context window.',
       maxOutputReset: 'Reset to 1/4 of the window',
-      maxOutputResetHint: 'Fills the box above with "1/4 of the current window". It only fills the value — it does not save (the real gateway cannot clear this field, #314; to stop overriding, reset and then save).',
-      maxOutputResetNeedsWindow: 'No window entered, so 1/4 cannot be computed — fill the context window first.',
+      maxOutputResetHint: 'Fill with 1/4 of the window, then save to apply.',
+      maxOutputResetNeedsWindow: 'Enter a context window first.',
       colPricing: 'Pricing',
       inputCostLabel: 'Input price (USD / 1M tokens)',
       outputCostLabel: 'Output price (USD / 1M tokens)',

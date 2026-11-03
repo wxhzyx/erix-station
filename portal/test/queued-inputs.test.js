@@ -90,7 +90,7 @@ function world(overrides = {}) {
     if (/UPDATE queued_inputs SET status = 'recalled'/.test(sql)) {
       const rows = w.queued.filter((q) => q.session_id === params[0] && q.status === 'pending');
       for (const q of rows) q.status = 'recalled';
-      return { rows: rows.map((q) => ({ id: q.id, kind: q.kind, content: q.content })) };
+      return { rows: rows.map((q) => ({ id: q.id, kind: q.kind, content: q.content, ...(/RETURNING id, kind, content, attachments/.test(sql) ? { attachments: q.attachments } : {}) })) };
     }
     // --- 队头查询（含「组内第一条」的 NOT EXISTS 自连接）---
     // 必须与产品 SQL 同步认「过期的 delivering」（`w.staleIds`），否则这条测试只能证明假池自己一致。
@@ -438,4 +438,13 @@ test('#370 出队：postMessage 404（会话没了）⇒ 钉 discarded，不再�
   const out = await drainWith(w, { termination: { reason: 'end_turn' } });
   assert.equal(out.blocked, 'deliver_failed');
   assert.equal(w.queued[0].status, 'discarded');
+});
+
+
+test('work file contents survive queue recall', async () => {
+  const w = world();
+  const attachment = { kind: 'file', path: 'upload:a.txt', name: 'a.txt', text: 'retained contents' };
+  w.queued.push({ id: 'a', session_id: SID, kind: 'follow_up', content: 'read this', attachments: [attachment], position: 1, status: 'pending' });
+  const result = await recallQueuedInputs(w.pool, { userId: 'u1', sessionId: SID, deps: w.deps });
+  assert.deepEqual(result.attachments, [attachment]);
 });

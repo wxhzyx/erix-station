@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { URL } from 'node:url';
 import * as auth from './auth.js';
+import { createOidcLogin } from './oidc.js';
 import * as migrate from './migrate.js';
 import * as projects from './projects.js';
 import * as sessions from './sessions.js';
@@ -18,6 +19,15 @@ import * as preview from './preview.js';
 import * as internal from './internal.js';
 import * as artifacts from './artifacts.js';
 import * as llm from './llm.js';
+import * as chatMode from './chat-mode.js';
+import { parseDocument } from './document-parser.js';
+import * as projectApprovals from './project-approvals.js';
+import { createApprovalRepository, ApprovalRepositoryError } from './approval-repository.js';
+import { ApprovalMergeError } from './approval-git-merge.js';
+import * as modeSettings from './mode-settings.js';
+import * as managedProjects from './managed-projects.js';
+import * as tokenQuota from './token-quota.js';
+import { MAX_PACKAGE_BYTES } from './delivery-package.js';
 import { createLlmGatewayClient, LlmGatewayError } from './llm-gateway.js';
 import * as admin from './admin.js';
 import * as dirs from './dirs.js';
@@ -490,6 +500,7 @@ function readJsonBody(req, limit) {
       }
     });
     req.on('error', (e) => reject(e));
+    req.on('aborted', () => reject(new HttpError(400, 'request_aborted', 'request aborted')));
   });
 }
 
@@ -537,7 +548,7 @@ export async function checkReady(pool, migrationsDir = migrate.defaultMigrations
   }
 }
 
-export function createServer({ pool, config, log = console, docker = null, llmGateway = null }) {
+export function createServer({ pool, config, log = console, docker = null, llmGateway = null, approvalRepository = null, approvalComplete = undefined }) {
   const loginLimiter = createRateLimiter(config.loginRateLimit);
   // TOTP 失败限流按「账户 + IP」计数（防换新 pending_token 绕过）；单 token 尝试上限单独计。
   const totpLimiter = createRateLimiter({
@@ -564,16 +575,21 @@ export function createServer({ pool, config, log = console, docker = null, llmGa
     maxEntries: 10000,
   });
   const ctx = {
+    approvalRepository: approvalRepository ?? createApprovalRepository({ pool, config }),
+    approvalComplete,
+    documentUploads: new Set(),
     pool, config, log, loginLimiter, totpLimiter, totpTokenLimiter, kdfSemaphore, previewTicketLimiter, docker,
     llmGateway: llmGateway ?? createLlmGatewayClient({
       adminUrl: config.llmGatewayAdminUrl ?? 'http://station-litellm:4000',
       masterKey: config.llmGatewayMasterKey ?? '',
+      teamId: config.llmGatewayTeamId ?? '',
     }),
   };
   // issue #38 Phase B2 admin UI：portal serve 进程本就有 config.dockerHost（cli.js serve 的
   // startProvisionerLoop 也用它自建 client——调查结论见 Phase B2 报告），故 provision 端点**可实现**：
   // 按需懒建并缓存 docker client（不持有连接，仅 HTTP 工厂）。测试可经 createServer({ docker }) 注入。
   let lazyDocker = null;
+  ctx.oidcLogin = config.oidc ? createOidcLogin({ pool, config, gateway:ctx.llmGateway }) : null;
   ctx.adminDocker = () => {
     if (ctx.docker) return ctx.docker;
     if (!lazyDocker) lazyDocker = createDockerClient({ dockerHost: ctx.config.dockerHost });
@@ -584,6 +600,10 @@ export function createServer({ pool, config, log = console, docker = null, llmGa
     try {
       await route(req, res, ctx);
     } catch (err) {
+      if (err instanceof chatMode.ChatModeError || err instanceof projectApprovals.ProjectApprovalError || err instanceof ApprovalRepositoryError || err instanceof ApprovalMergeError) {
+        sendJson(res, err.httpStatus, errorBody(err.code, err.message));
+        return;
+      }
       if (err instanceof HttpError) {
         const headers = { ...(err.headers || {}) };
         if (err.status === 413) headers['Connection'] = 'close'; // 未读完的请求体需断开
@@ -768,10 +788,42 @@ async function routeApi(req, res, ctx, url) {
   }
 
   if (req.method === 'POST' && pathname === '/api/auth/login') {
+    if (config.oidcOnly) throw new HttpError(403, 'password_login_disabled', '请使用 INTEVA SSO 登录');
     return handleLoginStep1(req, res, ctx);
   }
 
+  if (req.method === 'GET' && pathname === '/api/auth/providers') {
+    return sendJson(res, 200, { sso: Boolean(ctx.oidcLogin), password: !config.oidcOnly });
+  }
+  if (req.method === 'GET' && ['/api/auth/sso', '/api/auth/sso/callback'].includes(pathname)) {
+    if (!ctx.oidcLogin) throw new HttpError(404, 'not_found', 'SSO is not configured');
+    const stateCookie = '__Host-fde_oidc';
+    try {
+      if (pathname === '/api/auth/sso') {
+        const started = await ctx.oidcLogin.start();
+        res.writeHead(302, { Location: started.url, 'Cache-Control': 'no-store',
+          'Set-Cookie': `${stateCookie}=${started.browserToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=300` });
+      } else {
+        const { session } = await ctx.oidcLogin.callback(url.searchParams, getCookie(req, stateCookie), {
+          ip: req.socket.remoteAddress, userAgent: req.headers['user-agent'],
+        });
+        res.writeHead(302, { Location: '/#/', 'Cache-Control': 'no-store', 'Set-Cookie': [
+          sessionCookieHeader(config.cookie, session.token),
+          `${stateCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+        ] });
+      }
+    } catch (error) {
+      // Provider errors can contain tokens or authorization codes. Never log their text.
+      ctx.log.warn?.('[oidc] login failed', { code: error.code || 'sso_failed' });
+      res.writeHead(302, { Location: '/#/login?sso_error=1', 'Cache-Control': 'no-store',
+        'Set-Cookie': `${stateCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0` });
+    }
+    res.end();
+    return;
+  }
+
   if (req.method === 'POST' && pathname === '/api/auth/login/totp') {
+    if (config.oidcOnly) throw new HttpError(403, 'password_login_disabled', '请使用 INTEVA SSO 登录');
     return handleLoginTotp(req, res, ctx);
   }
 
@@ -782,6 +834,91 @@ async function routeApi(req, res, ctx, url) {
     res.writeHead(204, { 'Set-Cookie': clearCookieHeader(config.cookie) });
     res.end();
     return;
+  }
+
+  if (pathname === '/api/project-approvals') {
+    const session = await requireSession(req, ctx);
+    if (req.method === 'GET') return sendJson(res, 200, await projectApprovals.listProjectApprovals(pool, session.user.id, {
+      cwd: url.searchParams.get('cwd') ?? undefined, status: url.searchParams.get('status') ?? undefined,
+    }));
+    if (req.method === 'POST') {
+      requireJson(req);
+      const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+      return sendJson(res, 201, await projectApprovals.submitProjectApproval(pool, session.user.id, body, { repository: ctx.approvalRepository }));
+    }
+    throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+  }
+  const projectApprovalMatch = pathname.match(/^\/api\/project-approvals\/([^/]+)$/);
+  if (projectApprovalMatch && req.method === 'GET') {
+    const session = await requireSession(req, ctx);
+    return sendJson(res, 200, await projectApprovals.getProjectApproval(pool, session.user.id, projectApprovalMatch[1]));
+  }
+
+  // Stateless extraction: authenticated input bytes only, no paths, storage or model call.
+  // Reserve before reading the body so concurrent large uploads are bounded as well.
+  if (pathname === '/api/attachments/extract') {
+    const session = await requireSession(req, ctx);
+    if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+    requireJson(req);
+    const uploads = ctx.documentUploads;
+    if (uploads.size >= 4 || uploads.has(session.user.id)) {
+      throw new HttpError(429, 'document_busy', '文档解析繁忙，请稍后重试');
+    }
+    uploads.add(session.user.id);
+    const deadline = setTimeout(() => req.destroy(), 30000);
+    try {
+      const body = await readJsonBody(req, 12 * 1024 * 1024);
+      const result = await parseDocument({ name: body?.name, data: body?.data_base64 });
+      res.setHeader('Cache-Control', 'no-store');
+      return sendJson(res, 200, result);
+    } catch (err) {
+      if (typeof err.code === 'string' && err.code.startsWith('document_')) {
+        throw new HttpError(err.status ?? 422, err.code, err.message);
+      }
+      throw err;
+    } finally {
+      clearTimeout(deadline);
+      uploads.delete(session.user.id);
+    }
+  }
+
+  if (pathname === '/api/me/mode-settings' && req.method === 'GET') {
+    const session = await requireSession(req, ctx);
+    return sendJson(res, 200, await modeSettings.getModeSettings(pool, session.user.id, { gateway: ctx.llmGateway }));
+  }
+  const modeMatch = pathname.match(/^\/api\/me\/mode-settings\/(chat|work)$/);
+  if (modeMatch && req.method === 'PUT') {
+    const session = await requireSession(req, ctx);
+    requireJson(req);
+    const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+    return sendJson(res, 200, await modeSettings.setModeSettings(pool, session.user.id, modeMatch[1], body, { gateway: ctx.llmGateway }));
+  }
+
+  // Project-free chat uses login ownership only; never enters the runner/tool path.
+  if (pathname === '/api/chat/conversations') {
+    const session = await requireSession(req, ctx);
+    if (req.method === 'GET') return sendJson(res, 200, await chatMode.listConversations(pool, session.user.id));
+    if (req.method === 'POST') {
+      requireJson(req);
+      await readJsonBody(req, ctx.config.maxBodyBytes);
+      return sendJson(res, 201, await chatMode.createConversation(pool, session.user.id));
+    }
+  }
+  const chatMatch = pathname.match(/^\/api\/chat\/conversations\/([^/]+)(\/messages)?$/);
+  if (chatMatch) {
+    const session = await requireSession(req, ctx);
+    if (req.method === 'GET' && !chatMatch[2]) {
+      return sendJson(res, 200, await chatMode.getConversation(pool, session.user.id, chatMatch[1]));
+    }
+    if (req.method === 'POST' && chatMatch[2]) {
+      requireJson(req);
+      const body = await readJsonBody(req, 6 * 1024 * 1024);
+      return sendJson(res, 200, await chatMode.sendChatMessage(pool, session.user.id, chatMatch[1], body, {
+        resolveProvider: (userId, db) => modeSettings.resolveChatLlmProvider(db, userId, {
+          gateway: ctx.llmGateway, gatewayUrl: ctx.config.llmGatewayAdminUrl ?? ctx.config.llmGatewayUrl,
+        }),
+      }));
+    }
   }
 
   if (req.method === 'GET' && pathname === '/api/me') {
@@ -801,6 +938,17 @@ async function routeApi(req, res, ctx, url) {
   if (pathname === '/api/me/password') {
     if (req.method === 'POST') return handleChangeMyPassword(req, res, ctx);
     throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+  }
+
+  if (pathname === '/api/me/token-quota') {
+    const session = await requireSession(req,ctx);
+    if(req.method === 'GET') return sendJson(res,200,{
+      ...await tokenQuota.quotaRequest(ctx.config,session.user.id),requests:await tokenQuota.listQuotaRequests(ctx.pool,session.user.id),
+    });
+    if(req.method === 'POST') {
+      requireJson(req);const body=await readJsonBody(req,ctx.config.maxBodyBytes);
+      return sendJson(res,201,await tokenQuota.submitQuotaRequest(ctx.pool,ctx.config,{userId:session.user.id,body}));
+    }
   }
   if (pathname === '/api/me/git-credential') {
     const session = await requireSession(req, ctx);
@@ -986,6 +1134,70 @@ async function requireAdmin(req, ctx) {
 async function handleAdminApi(req, res, ctx, url) {
   const { pathname } = url;
   const session = await requireAdmin(req, ctx); // 所有 /api/admin/* 端点统一先鉴权
+
+  const approvalAction = pathname.match(/^\/api\/admin\/project-approvals\/([^/]+)\/(review|approve|merge)$/);
+  if (approvalAction) {
+    if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+    requireJson(req);
+    const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+    const [_, approvalId, action] = approvalAction;
+    const repository = ctx.approvalRepository;
+    if (action === 'review') return sendJson(res, 200, await projectApprovals.reviewProjectApproval(ctx.pool, session.user.id, approvalId, {
+      repository, complete: ctx.approvalComplete,
+      resolveProvider: (adminId) => modeSettings.resolveChatLlmProvider(ctx.pool, adminId, {
+        gateway: ctx.llmGateway, gatewayUrl: ctx.config.llmGatewayAdminUrl ?? ctx.config.llmGatewayUrl,
+      }),
+    }));
+    const handler = action === 'approve' ? projectApprovals.approveProjectApproval : projectApprovals.mergeProjectApproval;
+    return sendJson(res, 200, await handler(ctx.pool, session.user.id, approvalId, body, { repository }));
+  }
+
+  if(pathname === '/api/admin/token-quota-requests' && req.method === 'GET') {
+    return sendJson(res,200,{requests:await tokenQuota.listQuotaRequests(ctx.pool)});
+  }
+  const quotaUser=pathname.match(/^\/api\/admin\/users\/([^/]+)\/token-quota$/);
+  if(quotaUser) {
+    if(req.method === 'GET') return sendJson(res,200,await tokenQuota.quotaRequest(ctx.config,quotaUser[1]));
+    if(req.method === 'PUT') {
+      requireJson(req);const body=await readJsonBody(req,ctx.config.maxBodyBytes);
+      return sendJson(res,200,await tokenQuota.setQuota(ctx.pool,ctx.config,{userId:quotaUser[1],actorId:session.user.id,dailyLimit:body.daily_limit}));
+    }
+  }
+  const quotaReview=pathname.match(/^\/api\/admin\/token-quota-requests\/([0-9a-f-]{36})\/review$/i);
+  if(quotaReview && req.method === 'POST') {
+    requireJson(req);const body=await readJsonBody(req,ctx.config.maxBodyBytes);
+    if(typeof body.approve !== 'boolean') throw new HttpError(400,'validation_failed','请选择批准或拒绝');
+    const request=(await ctx.pool.query('SELECT user_id FROM token_quota_requests WHERE id=$1',[quotaReview[1]])).rows[0];
+    if(!request) throw new HttpError(404,'not_found','申请不存在');
+    return sendJson(res,200,await tokenQuota.setQuota(ctx.pool,ctx.config,{userId:request.user_id,actorId:session.user.id,requestId:quotaReview[1],approve:body.approve}));
+  }
+
+  if (pathname === '/api/admin/delivery-packages' && req.method === 'GET') {
+    return sendJson(res, 200, { packages: await managedProjects.listPackages(ctx.pool) });
+  }
+  if (pathname === '/api/admin/delivery-packages' && req.method === 'POST') {
+    if (req.headers['content-type'] !== 'application/zip') throw new HttpError(415,'zip_required','请选择 ZIP 开发交付包');
+    const chunks = []; let size = 0;
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > MAX_PACKAGE_BYTES) throw new HttpError(413,'package_too_large','交付包不得超过 50 MB');
+      chunks.push(chunk);
+    }
+    return sendJson(res,201,await managedProjects.uploadPackage(ctx.pool, {
+      actorId:session.user.id,name:url.searchParams.get('name'),filename:url.searchParams.get('filename'),archive:Buffer.concat(chunks),
+    }));
+  }
+  if (pathname === '/api/admin/assigned-projects') {
+    if (req.method === 'GET') return sendJson(res,200,{projects:await managedProjects.listAssignments(ctx.pool)});
+    if (req.method === 'POST') {
+      requireJson(req); const body = await readJsonBody(req,ctx.config.maxBodyBytes);
+      return sendJson(res,201,await managedProjects.createAssignment(ctx.pool,{actorId:session.user.id,body,config:ctx.config}));
+    }
+  }
+  const retryAssignment = pathname.match(/^\/api\/admin\/assigned-projects\/([^/]+)\/retry$/);
+  if (retryAssignment && req.method === 'POST') {
+    return sendJson(res,200,await managedProjects.provisionAssignment(ctx.pool,{id:retryAssignment[1],config:ctx.config}));
+  }
 
   const adminGitCredentialMatch = pathname.match(/^\/api\/admin\/fdes\/([^/]+)\/git-credential$/);
   if (adminGitCredentialMatch) {
@@ -1244,7 +1456,9 @@ async function handleAdminApi(req, res, ctx, url) {
     if (action === null && req.method === 'PATCH') {
       requireJson(req);
       const body = await readJsonBody(req, ctx.config.maxBodyBytes);
-      return sendJson(res, 200, await admin.updateUser(ctx.pool, userId, body, { actorId: session.user.id }));
+      const result = await admin.updateUser(ctx.pool, userId, body, { actorId: session.user.id });
+      if (body.status === 'disabled') await modeSettings.revokeChatLlmConfig(ctx.pool, userId, { gateway: ctx.llmGateway });
+      return sendJson(res, 200, result);
     }
     if (action === null && req.method === 'DELETE') {
       const result = await admin.deleteUser(ctx.pool, {
@@ -1253,6 +1467,7 @@ async function handleAdminApi(req, res, ctx, url) {
         config: ctx.config,
         log: ctx.log,
       });
+      await modeSettings.revokeChatLlmConfig(ctx.pool, userId, { gateway: ctx.llmGateway });
       if (result.offboarding) return sendJson(res, 202, { offboarding: result.offboarding });
       res.writeHead(204);
       res.end();
@@ -1660,7 +1875,7 @@ function queuedInputDeps(ctx) {
 async function handlePostQueuedInput(req, res, ctx, sessionId) {
   const session = await requireSession(req, ctx);
   requireJson(req);
-  const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+  const body = await readJsonBody(req, 2 * 1024 * 1024);
   // 校验前置到幂等包装之前（F3 口径，同 handlePostMessage）：非法体 400 且不占幂等占位行。
   // `kind` 缺省 = `steer`（前端主键 Enter 的动作，也是旧客户端不传 kind 时唯一的合理默认）。
   // ⚠ 缺省必须在**算 requestHash 之前**定形：否则「不传 kind」与「传 steer」的同 key 重试会被
@@ -1746,7 +1961,7 @@ async function handlePostMessage(req, res, ctx, sessionId) {
   const session = await requireSession(req, ctx);
   requireJson(req);
   // 先读体（与其它端点一致：413/400 行为不受密钥校验影响），再校验体与 Idempotency-Key 头
-  const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+  const body = await readJsonBody(req, 2 * 1024 * 1024);
   // F3：请求体校验**前置到幂等包装之前**——非法体 400 且不占幂等占位行；
   // 否则首次非法体占位后，同 key 的合法重试会因 request_hash 不同撞 409 idempotency_key_reuse。
   const { content, attachments } = sessions.validateMessageBody(body);
@@ -1944,6 +2159,12 @@ const HISTORY_EVENT_TYPES = new Set([
   // 仍独立存亡，只加一边就得到两种可见性不一致（#288），16 类的对账测在 `engineEventSurface.spec.ts`。
   // 只剩 `run_outcome` **显式不进**（与 `run_end` 语义重叠且今天无读者，豁免理由同在下测里写出）。
   'compaction_strategy_fallback', 'persistence_capability_degraded', 'resume_journal_skipped',
+  // issue #438 切片 B（erix-agent 0.29.0）：`LoopEvent` 联合类型从 16 类长到 **19 类**，这两类是
+  // 本站裁定「进时间线」的那部分（第三类 `config_override_conflict` 与联合外的
+  // `continuity_injection_skipped` **显式豁免**，理由在 `portal/test/event-surface-contract.test.js`
+  // 的豁免表与 `useEventStream.ts` 的 EVENT_TYPES 段）。三处集合仍各自独立存亡（#288）：
+  // 只加一边就是「实时收不到」或「刷新后消失」。
+  'compaction_deferred', 'budget_below_working_set',
   // issue #371-A：`persistence_error`（引擎 erix-agent#461 起的落盘失败告警，带 `fatal`）此前
   // **库里存着、读不出来**：写入侧不过白名单（`internal.js` 直接 INSERT），展示侧不过 ⇒ 刷新后
   // 一条都不提。而这条事件最重要的时刻，正是用户刷新来看「我这轮到底存下没」的那一刻。
@@ -2820,12 +3041,18 @@ async function handleChangeMyPassword(req, res, ctx) {
 
 async function handleListDirs(req, res, ctx) {
   const session = await requireSession(req, ctx);
-  return sendJson(res, 200, await dirs.listDirs(ctx.pool, {
-    userId: session.user.id,
-    userSpaceRoot: ctx.config.userSpaceRoot,
-    fdeName: session.user.fde_name,
-    log: ctx.log,
-  }));
+  const result = await dirs.listDirs(ctx.pool, {
+    userId: session.user.id, userSpaceRoot: ctx.config.userSpaceRoot,
+    fdeName: session.user.fde_name, log: ctx.log,
+  });
+  if (ctx.config.managedProjects) {
+    const projects = await managedProjects.listAssignments(ctx.pool,session.user.id);
+    const assigned = new Map(projects.filter(p => p.status === 'ready').map(p => [p.name, p]));
+    return sendJson(res,200,{can_create:false,dirs:result.dirs.filter(d => assigned.has(d.name)).map(d => ({
+      ...d, repo_url:assigned.get(d.name).repo_url, package_name:assigned.get(d.name).package_name,
+    }))});
+  }
+  return sendJson(res, 200, result);
 }
 
 /** 目录树懒展开（单层只读）：?cwd=<相对cwd>&path=<相对路径>（path 默认 '.'）。 */

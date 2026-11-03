@@ -186,7 +186,7 @@ export async function recallQueuedInputs(pool, { userId, sessionId, deps = {} })
     const upd = await client.query(
       `UPDATE queued_inputs SET status = 'recalled'
         WHERE session_id = $1 AND status = 'pending'
-        RETURNING id, kind, content`,
+        RETURNING id, kind, content, attachments`,
       [s.id],
     );
     rows = upd.rows;
@@ -198,7 +198,8 @@ export async function recallQueuedInputs(pool, { userId, sessionId, deps = {} })
     client.release();
   }
   await safeNotify(() => deps.notifyQueueUpdate?.(sessionId));
-  return toSnapshot(rows, { withId: false });
+  const attachments = rows.flatMap(row => row.attachments ?? []);
+  return { ...toSnapshot(rows, { withId: false }), ...(attachments.length ? { attachments } : {}) };
 }
 
 /**

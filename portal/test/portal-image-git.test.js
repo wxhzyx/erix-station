@@ -53,3 +53,13 @@ test('镜像缺 git 时灯必须落 ⚪ git_unavailable，而不是崩或猜绿�
   assert.match(src, /git_unavailable/, '缺 git 必须是显式态（reason=git_unavailable）');
   assert.match(src, /light:\s*'grey'/, '缺 git 必须落灰（⚪ 不得渲染成绿）');
 });
+
+test('approved HTTPS merge transport has trusted CA certificates in runtime', () => {
+  const runtime = stages(fs.readFileSync(DOCKERFILE, 'utf8')).find(s => /portal\/src\/cli\.js/.test(s.body));
+  assert.match(runtime.body, /apt-get install[^\n]*\bca-certificates\b/);
+});
+
+test('document parser hard limits require util-linux in the runtime image', () => {
+  const runtime = stages(fs.readFileSync(DOCKERFILE, 'utf8')).find(s => /portal\/src\/cli\.js/.test(s.body));
+  assert.match(runtime.body, /apt-get install[^\n]*\butil-linux\b/);
+});

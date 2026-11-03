@@ -38,6 +38,7 @@ function portRow(id: string, port: number, state: string) {
     scope: 'fde',
     role: 'spare',
     exposure: 'private',
+    observed: { pid: 41, cwd: '~/projects/demo', cmd: 'node', branch: null, started_at: null, observed_at: new Date().toISOString() },
   };
 }
 
@@ -116,7 +117,7 @@ describe('工作台 · 预览端口区块', () => {
     try {
       expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/me/ports')).toHaveLength(1);
       const bar = toggle(wrapper);
-      expect(bar.text()).toContain('端口池（3 个）');
+      expect(bar.text()).toContain('运行端口（3 个）');
       expect(bar.attributes('aria-expanded')).toBe('false');
       // 防预取：整个面板只打过列表端点，一条 POST 都没有
       expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
@@ -223,11 +224,11 @@ describe('工作台 · 预览端口区块', () => {
     const { wrapper } = await mountWorkbench(ADMIN_WITH_SEAT, (url, init) =>
       url === '/api/me/ports' && !init?.method ? jsonResponse(200, { items: [] }) : undefined);
     try {
-      expect(toggle(wrapper).text()).toContain('端口池使用情况');
+      expect(toggle(wrapper).text()).toContain('运行端口');
       expect(toggle(wrapper).text()).not.toContain('（');
       await toggle(wrapper).trigger('click');
       expect(wrapper.find('[data-test="preview-ports-table"]').exists()).toBe(false);
-      expect(wrapper.get('[data-test="preview-ports-empty"]').text()).toContain('你还没有预览端口');
+      expect(wrapper.get('[data-test="preview-ports-empty"]').text()).toContain('暂无新鲜的端口监听记录');
     } finally {
       wrapper.unmount();
     }
@@ -244,7 +245,7 @@ describe('工作台 · 预览端口区块', () => {
     });
     try {
       expect(calls).toBe(1);
-      expect(toggle(wrapper).text()).toContain('端口池（加载失败）');
+      expect(toggle(wrapper).text()).toContain('运行端口（加载失败）');
       await toggle(wrapper).trigger('click');
       expect(wrapper.get('[data-test="preview-ports-error"]').text())
         .toBe('预览端口加载失败（db_unavailable）：数据库暂时不可用');
@@ -308,4 +309,23 @@ describe('工作台 · #286 告知链（人侧界面不再出现技术告知）'
       wrapper.unmount();
     }
   });
+});
+
+it('shows only fresh listeners including unrouted ports, never idle allocations or stale evidence', async () => {
+  const live = { ...portRow('observed:5173', 5173, 'observed'), hostname: null, url: null };
+  const idle = { ...portRow(UUID_22000, 22000, 'active'), observed: null };
+  const stale = portRow(UUID_22001, 22001, 'active');
+  stale.observed.observed_at = new Date(Date.now() - 46_000).toISOString();
+  const { wrapper, fetchMock } = await mountWorkbench(FDE_USER, url => url === '/api/me/ports'
+    ? jsonResponse(200, { items: [idle, stale, live] }) : undefined);
+  try {
+    await toggle(wrapper).trigger('click');
+    const rows = wrapper.findAll('[data-test="preview-port-row"]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.text()).toContain('5173');
+    expect(rows[0]?.find('[data-test="preview-port-open"]').exists()).toBe(false);
+    expect(rows[0]?.find('[data-test="preview-port-hostname"]').exists()).toBe(false);
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+    expect(wrapper.text()).not.toContain('端口池');
+  } finally { wrapper.unmount(); }
 });

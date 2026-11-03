@@ -951,3 +951,20 @@ test('#322 generateAutoTitle 单元面：没有 runId（拿不到「最后一段
   assert.equal(f.calls.length, 0, '无 run ⇒ 无输入 ⇒ 不发请求（而不是发一个空 prompt 的请求）');
   assert.equal(logs.length, 0, '这条不是错误，不刷日志');
 });
+
+test('work uploads: postMessage persists both file contents in canonical transcript before queueing', async () => {
+  const { pool, order, state } = postMessageClient({});
+  await postMessage(pool, {
+    userId: 'u1', sessionId: PM_SESSION_ID, content: 'compare files',
+    attachments: [
+      { kind: 'file', path: 'upload:first.txt', name: 'first.txt', text: 'FIRST UPLOADED CONTENT' },
+      { kind: 'file', path: 'upload:second.txt', name: 'second.txt', text: 'SECOND UPLOADED CONTENT' },
+    ],
+  });
+  const serialized = JSON.stringify(state.transcriptRows);
+  assert.match(serialized, /FIRST UPLOADED CONTENT/);
+  assert.match(serialized, /SECOND UPLOADED CONTENT/);
+  const transcriptIndex = order.findIndex(({ sql }) => /INSERT INTO transcript_rounds/.test(sql));
+  const queueIndex = order.findIndex(({ sql }) => /INSERT INTO run_queue/.test(sql));
+  assert.ok(transcriptIndex >= 0 && queueIndex > transcriptIndex);
+});

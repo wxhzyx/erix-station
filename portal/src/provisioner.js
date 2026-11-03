@@ -681,7 +681,7 @@ export async function onboardFde(pool, config, {
   return withFdeLock(pool, fdeName, async () => {
     const stackId = config.stackId ?? 'default'; // F9：本栈所有权 id
     const user = await pool.query(
-      `SELECT id, fde_name, login, status FROM users
+      `SELECT id, fde_name, login, status, auth_source FROM users
         WHERE fde_name = $1 AND status IN ('active', 'awaiting_credential')`,
       [fdeName],
     );
@@ -798,6 +798,7 @@ export async function onboardFde(pool, config, {
             baseUrl: gitHost.base_url,
             adminKey: gitHost.admin_key,
             login: fdeName,
+            allowExistingAccount: u.auth_source !== 'oidc' || Boolean(gitAccount?.token_ref || previousTokenRef),
             previousTokenRef: previousTokenRef ?? lostTokenRef,
           });
           await setGitCredential({

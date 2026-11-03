@@ -19,6 +19,7 @@ beforeEach(() => {
 
 function setup(dirs: { name: string; cwd: string; running_count: number; queued_count: number }[]) {
   const store = useWorkbenchStore();
+  store.canCreateProject = true;
   store.dirs = dirs;
   store.dirCwd = dirs[0]?.cwd ?? null;
   const wrapper = mount(DirSelect, { props: {}, global: { plugins: [i18n] } });
@@ -26,6 +27,12 @@ function setup(dirs: { name: string; cwd: string; running_count: number; queued_
 }
 
 describe('DirSelect（目录下拉）', () => {
+  it('管理员下发模式隐藏用户新建目录入口', async () => {
+    const { store, wrapper } = setup([]);
+    store.canCreateProject = false;
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('option[value="__new__"]').exists()).toBe(false);
+  });
   it('选项 = 目录名 + ●N 徽标（N=running+queued；0 不显示徽标）+ 末项「＋ 新建目录」', () => {
     const { wrapper } = setup([
       { name: 'llm-smoke', cwd: '~/projects/llm-smoke', running_count: 1, queued_count: 1 },
@@ -79,5 +86,19 @@ describe('DirSelect（目录下拉）', () => {
     expect(refresh.classes()).toContain('rounded-[7px]');
     expect(refresh.classes()).toContain('text-[12px]');
     expect(wrapper.get('label[for="dirSel"]').classes()).toContain('text-[11px]');
+  });
+});
+
+describe('Project context menu', () => {
+  it('right click and keyboard open actions for selected project; escape dismisses', async () => {
+    const { wrapper } = setup([{name:'demo',cwd:'~/projects/demo',running_count:0,queued_count:0}]);
+    await wrapper.get('select').trigger('contextmenu');
+    expect(wrapper.get('[role=menu]').text()).toContain('发起审批');
+    expect(wrapper.get('[role=menu]').text()).toContain('合并版本');
+    await wrapper.get('[role=menu]').trigger('keydown',{key:'Escape'}); expect(wrapper.find('[role=menu]').exists()).toBe(false);
+    await wrapper.get('select').trigger('keydown',{key:'F10',shiftKey:true}); expect(wrapper.find('[role=menu]').exists()).toBe(true); wrapper.unmount();
+  });
+  it('visible actions fallback disables without a project and closes on project change',async()=>{
+    const {wrapper,store}=setup([]);expect(wrapper.get('button[aria-label="项目操作"]').attributes('disabled')).toBeDefined();store.dirCwd='~/projects/a';await wrapper.vm.$nextTick();await wrapper.get('button[aria-label="项目操作"]').trigger('click');expect(wrapper.find('[role=menu]').exists()).toBe(true);store.dirCwd='~/projects/b';await wrapper.vm.$nextTick();expect(wrapper.find('[role=menu]').exists()).toBe(false);wrapper.unmount();
   });
 });

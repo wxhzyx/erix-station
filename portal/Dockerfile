@@ -21,13 +21,14 @@ ENV NODE_ENV=production
 #   `git status --porcelain -uall` 判「未提交 + 未跟踪」。未推送 / 0 提交那两路是纯文本读 `.git`，
 #   不依赖 git 二进制；**但缺 git 时灯永远只能报 `grey / git_unavailable`** —— 一颗恒灰的灯比没有灯更槽
 #   （绿是承诺、灰是无信息，用户会直接把它当“坏了”而不再看）。
-# 只要 read-only 能力：不装 openssh-client / 不配凭据 —— portal 零 git 写（D9：init/commit/push/clone
-#   全走「让 AI 收尾」），也不跑 fetch，所以不碰网络也不碰凭据。
+# 工作区仍只读。项目审批新增受限例外：独立临时 bare 仓库中创建已审查的合并提交，
+# 经 HTTPS 和目标 SHA lease 推送；不执行工作区 hooks/config。需要 git >=2.38 与 CA 证书。
 # 层序照 runner/Dockerfile：重且稳定的 apt 层在前、易变代码在后（改 portal 代码不触发重装）；
 #   `--no-install-recommends` + 同层 `rm -rf /var/lib/apt/lists/*`（评审 F6 先例：异层清理等于没清）。
+# util-linux 提供文档解析子进程的 prlimit（硬地址空间/CPU限制，缺失时解析失败关闭）。
 # 本层内容被 `portal/test/portal-image-git.test.js` 以文本锁钉住。
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git \
+  && apt-get install -y --no-install-recommends git ca-certificates util-linux \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -46,6 +47,11 @@ COPY docs/data/ docs/data/
 # 增量迁移（deploy/migrations/*.sql）：migrate runner 的 defaultMigrationsDir() = /app/deploy/migrations，
 # 由 `cli.js migrate` 或 MIGRATE_ON_START=1 以 station_platform 应用到 head（deploy-contract §3.1/§3.3）。
 COPY deploy/migrations/ deploy/migrations/
+
+ARG STATION_REVISION=unknown
+ARG STATION_BUILD_DATE=unknown
+RUN node -e 'const fs=require("fs");fs.writeFileSync("portal/static/version.json",JSON.stringify({version:require("./package.json").version,revision:process.env.STATION_REVISION,built_at:process.env.STATION_BUILD_DATE})+"\n")'
+LABEL org.opencontainers.image.revision="${STATION_REVISION}"
 
 # materializer 以 root 写平台文件（root:root 0644/0444）、chown 工作区目录（1000:1000）。
 USER root

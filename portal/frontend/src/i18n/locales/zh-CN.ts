@@ -46,6 +46,9 @@ export const zhCN = {
   // 登录页（views/LoginView.vue）——覆盖该视图全部用户可见文案。
   // 注意：登录失败/校验失败的提示来自服务端 error.message（auth store 原样透传），不在前端翻译范围内。
   login: {
+    sso: '使用 INTEVA SSO 登录',
+    providerError: '无法加载登录方式，请刷新重试。',
+    ssoError: 'SSO 登录失败或请求已过期，请重试；持续失败请联系管理员。',
     title: 'FDE Station 登录',
     loginName: '登录名',
     password: '口令',
@@ -191,6 +194,16 @@ export const zhCN = {
       visibilityNoSummary: '这 {n} 轮原文对模型已不再逐字可见；本次没有生成摘要，要看原文请点「查看原文」。',
       visibilityBare: '这部分原文对模型已不再逐字可见；下面这份摘要就是它留下的全部。',
       visibilityNoSummaryBare: '这部分原文对模型已不再逐字可见；本次没有生成摘要，要看原文请点「查看原文」。',
+      // issue #440：**三态**的前两态（数据来自账本 `foldedFacts`，不是 `hasSummary`）。
+      // 第一态必须把「LLM 语义摘要」说出口：fold-llm 把 `record.summary` 写成字面量 "missing"，
+      // 旧实现据此说「本次没有生成摘要」——而账本里明明躺着 2048 B 语义摘要，那是 #440 的原文病症。
+      visibilityLlm: '这 {n} 轮原文对模型已不再逐字可见；留下的是 LLM 语义摘要（fold-llm），完整细节请看原文。',
+      visibilityLlmBare: '这部分原文对模型已不再逐字可见；留下的是 LLM 语义摘要（fold-llm），完整细节请看原文。',
+      // 第二态：只有机械替代物（fold-statistical）。如实说「没有 LLM 语义摘要」，不把它包装成语义摘要。
+      visibilityMechanical: '这 {n} 轮原文对模型已不再逐字可见；本次只留下机械替代物（fold-statistical），没有 LLM 语义摘要，细节请看原文。',
+      visibilityMechanicalBare: '这部分原文对模型已不再逐字可见；本次只留下机械替代物（fold-statistical），没有 LLM 语义摘要，细节请看原文。',
+      // 「摘要被夹断」标记（账本 `truncated:true`）——挂在同一行末尾，零新增 UI 结构。
+      summaryTruncated: '（摘要过长，已被夹断；完整内容请点「查看原文」。）',
       viewOriginal: '查看原文',
       // #388：原文块自己的收起入口（只隐藏、不清缓存，再展开不重发）
       collapseOriginal: '收起原文',
@@ -266,6 +279,10 @@ export const zhCN = {
       capabilityDegraded: '存储端缺少 {method} 能力：本次 run 对应的持久化被跳过（中途崩溃不可恢复）',
       resumeJournalSkipped: '崩溃轮的 {count} 条工具结果未入账（第 {round} 轮），下次恢复将依赖快照',
       resumeJournalSome: '若干',
+      // issue #438 切片 B（erix-agent 0.29.0）：`LoopEvent` 新增的两类**展示类**诊断事件。
+      // 数字没给就 `?`（#283）、外来标识符过形状闸（#261）——调用方已归一，文案不得再编数。
+      compactionDeferred: '本轮未折叠：请求尾部是未结清的工具调用（第 {round} 轮，{reason}），下一轮再折',
+      budgetBelowWorkingSet: '折叠后仍超预算：工作集 {workingSet} tokens > 预算 {budget} tokens（连续 {attempts} 次），本次 run 提前收尾；引擎建议预算 ≥ {suggested}',
       recovering: '重试中（{attempt}/{max}）',
       recovered: '重试成功',
       // issue #321（erix-station）：judge 永远只是**意见**，不是验收——分轴展示（工具审计 / 目标判断 /
@@ -473,9 +490,10 @@ export const zhCN = {
     poolToggle: '端口池使用情况',
     poolToggleCount: '端口池（{count} 个）',
     poolToggleFailed: '端口池（加载失败）',
-    procToggle: '进程监听情况',
-    procToggleCount: '进程监听（{count} 个）',
-    procEmpty: '项目里没有进程在监听。',
+    procToggleFailed: '运行端口（加载失败）',
+    procToggle: '运行端口',
+    procToggleCount: '运行端口（{count} 个）',
+    procEmpty: '暂无新鲜的端口监听记录。',
     spareGroup: '空闲（{count}）',
     currentBadge: '当前目录',
     colPort: '端口',
@@ -513,8 +531,8 @@ export const zhCN = {
     duplicateWarn: '⚠ {cwd} 同时在 {ports} 两个地址上开着——可能是新旧两个版本并存，先确认哪个才是你要看的（旧任务留下的程序不会自己关）。',
     unroutedNote: '这个程序还不能用预览地址打开——可让助理把它改到分配好的端口上。',
     stateHint: '「已放行过」只表示该端口首次凭证放行过，不代表容器里有应用在监听。',
-    emptySelf: '你还没有预览端口（平台尚未为账号分段，或已全部释放）。',
-    emptyFde: '该 FDE 没有活着的预览端口（可能尚未开户或已下线）。',
+    emptySelf: '暂无预览端口',
+    emptyFde: '暂无预览端口',
     loadFailed: '预览端口加载失败（{code}）：{message}',
     ticketFailed: '签发预览通行票失败（{code}）：{message}',
     // issue #256 交付②：同上，单张签票的 429 提示
@@ -574,6 +592,8 @@ export const zhCN = {
     expand: '展开',
     collapse: '收起',
     tabs: {
+      approvals: '项目审批',
+      delivery: '项目下发与配额',
       label: '管理台栏目',
       users: '用户管理',
       llm: 'LLM 管理',
@@ -621,16 +641,16 @@ export const zhCN = {
     // LLM 供应商/模型区（AdminView #llmSection + UserLlmPane）
     llm: {
       sectionTitle: 'LLM 供应商',
-      emptyProviders: '暂无供应商，先在下方新增。',
+      emptyProviders: '暂无供应商',
       // 模型明细展开按钮：{count} 为模型数量
       modelsCount: '模型明细（{count}）',
       collapseModels: '收起模型',
       emptyModels: '该供应商下暂无模型',
-      colCallName: '调用名（FDE 请求实际发的名字）',
+      colCallName: '调用名',
       colDisplayName: '显示名',
-      editCallNameHint: '数据面真名：FDE 请求里发的就是它，`fde_llm_bindings.*_model_name` 与虚拟 key 白名单存的都是它。改了会立刻同步到这些 FDE 的绑定与白名单（新旧名并存，在途请求不断）。',
-      editDisplayNameHint: '只改管理台/选择器里的展示，不影响 FDE 请求里发的名字。',
-      callNameRequired: '调用名不能为空：它是 FDE 请求实际发的名字。',
+      editCallNameHint: 'API 请求使用的名称，修改后同步到用户配置。',
+      editDisplayNameHint: '仅修改显示名称。',
+      callNameRequired: '请输入调用名。',
       duplicateCallName: '调用名重复',
       duplicateCallNameHint: '多个模型共用同一个调用名：网关按名字选 deployment，会在它们之间轮询，而模型列表里只列一个。',
       confirmCallNameTitle: '确认修改调用名',
@@ -645,11 +665,11 @@ export const zhCN = {
       colMaxOutputTokens: '输出预算上限 tokens',
       // #314：「留空 = 不修改」必须是明文，且要写明**新建与编辑不对称**（新建发显式 `null`、编辑是省略字段）——
       // 这是管理员困惑的直接来源（#317 已记在 §4.9，界面上也得说清）。
-      maxOutputTokensHint: '引擎侧把它当单次响应的输出预算上限。上限 = 上下文窗口的 1/4（由服务端校验，超限会被拒）。新建时留空 = 不写这个字段（不是「不修改」，新建没有现值），后端会按窗口的 1/4 假定一个生效值并下发。',
-      editMaxOutputTokensHint: '留空 = 不修改（编辑发的是 PATCH，留空就是不带这个字段）。上限 = 上下文窗口的 1/4，超限由服务端拒绝；列表里显示的始终是生效值（没配过时按窗口 1/4 假定）。',
+      maxOutputTokensHint: '留空使用上下文窗口的 1/4；不可超过此上限。',
+      editMaxOutputTokensHint: '留空不修改；上限为上下文窗口的 1/4。',
       maxOutputReset: '按当前窗口 1/4 重设',
-      maxOutputResetHint: '把上面那个框填成「当前窗口的 1/4」，只是**填值、不会自动保存**（真网关清不掉这个字段，#314；想停止手填覆盖就重设后保存）。',
-      maxOutputResetNeedsWindow: '没填窗口 ⇒ 算不出 1/4，先填上下文窗口。',
+      maxOutputResetHint: '填入窗口的 1/4，保存后生效。',
+      maxOutputResetNeedsWindow: '请先填写上下文窗口。',
       colPricing: '定价',
       inputCostLabel: 'Input 单价（USD / 1M tokens）',
       outputCostLabel: 'Output 单价（USD / 1M tokens）',

@@ -11,12 +11,17 @@
 
 | 文档 | 内容 | 状态 |
 |---|---|---|
+| [`ops/inteva-sso.md`](ops/inteva-sso.md) | INTEVA SSO 登录、Gitea 自动开户与统一 LiteLLM 个人 key | 实现与部署验证 |
+| [`design/managed-delivery-quota.md`](design/managed-delivery-quota.md) | 管理员交付包下发及个人每日 Token 配额 | INTEVA 扩展 |
+| [`ops/gitea-release.md`](ops/gitea-release.md) | 私有 Gitea 主分支自动测试、构建、发布与回退 | 内部发布 |
 | [`../README.md`](../README.md) | 项目定位、三条不变式 | ✅ |
 | [`../AGENTS.md`](../AGENTS.md) | 项目特有规则（边界/结构/端口/流程/已定决策） | ✅ |
 | [`design/fde-platform.md`](design/fde-platform.md) | **主规格**：拓扑、网络与隔离、访问控制、账号生命周期、端口分配、数据模型、事件流、LLM 接入、容器模板、部署、分期、决策 D1~D10 | ✅ |
 | [`design/topology.md`](design/topology.md) | **H-B 网络与访问拓扑定稿（单一事实来源）**：拓扑、IPAM、链路 L1–L10、路由模型、加固清单、连通矩阵、reconciler 职责、实测证据（决策者 2026-09，issue #5） | ✅ |
 | [`design/principles.md`](design/principles.md) | **设计原理**：五条核心原理、规则对照、被否决方案、未决问题决策框架、实现者硬约束 | ✅ |
 | [`design/runner-integration.md`](design/runner-integration.md) | **runner 集成契约（WP3b）**：agentd/worker 职责、IPC 信封、租约/心跳/事件批、终态收敛、erix-agent `runToolLoop`/`TranscriptStore` 锚点（v0.9.0，§9.1 八方法） | ✅ |
+| [`design/project-approvals.md`](design/project-approvals.md) | 项目审批、管理员 AI 审查与精确版本合并、合并版本记录、运行端口 | ✅ |
+| [`design/chat-work-modes.md`](design/chat-work-modes.md) | 聊天 / 工作模式：独立 API 配置、附件限制、接口与升级说明 | ✅ |
 | [`design/conversation-state.md`](design/conversation-state.md) | **会话状态模型（issue #77）**：三层生命周期（执行/会话/工作区）、session-scoped transcript 目标态、引擎现状源码核对、pi 参照系、P0–P3 分阶段实施、红线与验收口径 | ✅（设计定稿待实施） |
 | [`design/directory-as-project.md`](design/directory-as-project.md) | **去项目化：目录即项目（P5）+ 文件面板（P6）**：sessions.cwd 化、端口去项目化（`eric-p-<port>`）、同项目并行放行（pi 对齐不锁）、UI 定稿布局、materializer 退役、迁移与部署序 | ✅（设计定稿待实施） |
 | [`design/audit-2026-09-16.md`](design/audit-2026-09-16.md) | **设计文档集一致性审计（2026-09-16）**：58 条发现 + 修复处置记录（issue #21） | ✅ |

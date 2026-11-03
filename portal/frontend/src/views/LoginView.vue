@@ -3,7 +3,7 @@
 // 两步切换）。字段/按钮文案/错误展示位置保持逐字等价。
 // issue #101 P1：用户可见文案走 i18n（login.*，zh-CN/en 逐字等价），卡片右上角挂语言切换菜单。
 // 注意：错误提示 auth.error 来自 auth store（P2 归 errors.*），本阶段保持原样。
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useAuthStore, afterLoginRoute } from '../stores/auth';
@@ -13,6 +13,18 @@ const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
+const ssoEnabled = ref(false);
+const passwordEnabled = ref(false);
+const providerError = ref(false);
+onMounted(async () => {
+  try {
+    const response = await fetch('/api/auth/providers');
+    if (!response.ok) throw new Error('Login providers unavailable');
+    const providers = await response.json();
+    ssoEnabled.value = providers.sso === true;
+    passwordEnabled.value = providers.password !== false;
+  } catch { providerError.value = true; }
+});
 
 // 登录守卫携带的 redirect 回跳（如未登录访问 /session/<id> 深链）；仅允许站内路径。
 function loginRedirect(): string {
@@ -53,6 +65,12 @@ async function onTotpSubmit() {
           <LocaleSwitch />
         </div>
 
+        <a v-if="ssoEnabled && (!passwordEnabled || !auth.pendingToken)" href="/api/auth/sso"
+          class="block text-center w-full rounded-md bg-brand text-white py-2 mb-4">{{ t('login.sso') }}</a>
+        <p v-if="route.query.sso_error" class="text-red-600 text-sm mb-3" role="alert">{{ t('login.ssoError') }}</p>
+        <p v-if="providerError" class="text-red-600 text-sm mb-3" role="alert">{{ t('login.providerError') }}</p>
+
+        <template v-if="passwordEnabled">
         <!-- 第一步：login + password -->
         <form v-if="!auth.pendingToken" @submit.prevent="onLoginSubmit">
           <label class="block text-xs text-black/50 mb-1" for="loginName">{{ t('login.loginName') }}</label>
@@ -92,6 +110,7 @@ async function onTotpSubmit() {
         </form>
 
         <p class="text-red-600 text-sm mt-3 mb-0" role="alert">{{ auth.error }}</p>
+        </template>
       </div>
     </div>
   </div>
