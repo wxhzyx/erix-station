@@ -22,7 +22,9 @@ scope 为 `openid profile email`，回调 `https://fs.5195746.xyz/api/auth/sso/c
 
 ## 身份与资源
 
-首次登录按 `issuer|sub` 建档，用户名/工位名为 `sso-<规范化sub>-<身份哈希>`。
+首次登录按 `issuer|sub` 建档，用户名直接使用 SSO 的 `preferred_username`（INTEVA 域账号，缺省回退 `sub`），显示名称直接使用 `name`。
+每次登录同步用户名和姓名；已有用户的 UUID、内部工位名、Git 归属和用量归属保持稳定。新工位名使用域账号的小写 DNS 标签（点与下划线转连字符），不加 SSO 前缀或身份哈希。
+域账号重名会明确报冲突，不自动合并身份。
 不会通过相似用户名或邮箱自动关联本地账号；不会依据上游 role claim 提升管理员。
 同一身份并发登录由数据库事务锁串行化。重复登录复用账号、Git 账号及 LiteLLM key，
 已停用工位不会因再次登录自动启用。

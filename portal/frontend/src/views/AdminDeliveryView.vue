@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { api } from '../api';
+import ModalShell from '../components/ModalShell.vue';
 const props = withDefaults(defineProps<{ view?: 'delivery' | 'quota' }>(), { view: 'delivery' });
 type User = { id:string; login:string; display_name:string; fde_name:string|null; status:string };
 type Package = { id:string; name:string; filename:string; manifest:{name:string;size:number}[] };
-type Project = { id:string; name:string; login:string; package_name:string; status:string; last_error:string|null; repo_url:string|null };
+type Project = { id:string; name:string; login:string; package_name:string; status:string; last_error:string|null; repo_url:string|null; deleted_at?:string|null };
 type Quota = { daily_limit:number; used:number; reserved:number; remaining:number; day:string };
 type Request = {id:string;login:string;requested_limit:number;reason:string;status:string};
 const users=ref<User[]>([]), packages=ref<Package[]>([]), projects=ref<Project[]>([]), requests=ref<Request[]>([]);
 const userId=ref(''), packageId=ref(''), projectName=ref(''), instructions=ref(''), packageName=ref('');
 const archive=ref<File|null>(null), busy=ref(false), error=ref(''), message=ref('');
 const quota=ref<Quota|null>(null), limit=ref(2000000);
+const deleting=ref<Project|null>(null), confirmation=ref('');
+function confirmDelete(project:Project) { deleting.value=project; confirmation.value=''; }
+async function removeProject() { await action(async()=>{
+  if (!deleting.value || confirmation.value !== deleting.value.name) return;
+  await api(`/api/admin/assigned-projects/${deleting.value.id}`, {method:'DELETE',body:JSON.stringify({confirmation:confirmation.value})});
+  deleting.value=null; message.value='项目已删除，Gitea 仓库与历史用量已保留'; await load();
+}); }
 async function load() {
   const u = await api<{items:User[]}>('/api/admin/users');
   users.value = u.items.filter(x => x.status === 'active' && (props.view === 'quota' || x.fde_name));
@@ -70,9 +78,18 @@ async function review(id:string,approve:boolean) { await action(async()=>{
       <tr v-for="r in requests" :key="r.id"><td>{{r.login}}</td><td>{{Number(r.requested_limit).toLocaleString()}}</td><td>{{r.reason}}</td><td>{{r.status==='pending'?'待审批':r.status==='approved'?'已批准':'已拒绝'}}</td><td><template v-if="r.status==='pending'"><button :disabled="busy" @click="review(r.id,true)">批准</button><button :disabled="busy" @click="review(r.id,false)">拒绝</button></template></td></tr>
     </tbody></table></section>
     <section v-if="view === 'delivery'" class="console-card table-card"><h2>已下发项目</h2><p v-if="!projects.length">暂无下发项目</p><table v-else><thead><tr><th>用户 / 项目</th><th>交付包</th><th>状态</th><th>处理</th></tr></thead><tbody>
-      <tr v-for="p in projects" :key="p.id"><td>{{p.login}} / {{p.name}}</td><td>{{p.package_name}}</td><td>{{p.status==='ready'?'已就绪':p.status==='failed'?'失败':'处理中'}}<p v-if="p.last_error" class="error">{{p.last_error}}</p></td><td><button v-if="p.status!=='ready'" :disabled="busy" @click="retry(p.id)">重试下发</button><a v-else :href="p.repo_url??undefined" target="_blank" rel="noopener">仓库</a></td></tr>
+      <tr v-for="p in projects" :key="p.id"><td>{{p.login}} / {{p.name}}</td><td>{{p.package_name}}</td><td>{{p.deleted_at?'待完成清理':p.status==='ready'?'已就绪':p.status==='failed'?'失败':'处理中'}}<p v-if="p.last_error" class="error">{{p.last_error}}</p></td><td><button v-if="p.status!=='ready' && !p.deleted_at" :disabled="busy" @click="retry(p.id)">重试下发</button><a v-if="p.repo_url" :href="p.repo_url" target="_blank" rel="noopener">仓库</a><button data-test="delete-project" :disabled="busy" @click="confirmDelete(p)">{{p.deleted_at?'重试删除':'删除'}}</button></td></tr>
     </tbody></table></section>
   </div>
+  <ModalShell v-if="deleting" dialog-class="md:w-[36rem] p-6" label="删除交付项目" @close="!busy && (deleting=null)">
+    <form class="delivery" @submit.prevent="removeProject">
+      <h2>删除 {{deleting.login}} / {{deleting.name}}</h2>
+      <p>删除该项目的本地工作目录并归档会话，未推送的修改将丢失。保留 Gitea 仓库、提交历史和 LiteLLM 历史用量，不影响其他项目。正在执行的任务需要先停止。</p>
+      <label>输入项目名称确认<input v-model="confirmation" data-test="project-delete-confirmation" :disabled="busy" autocomplete="off"></label>
+      <p v-if="error" role="alert" class="error">{{error}}</p>
+      <button data-test="confirm-project-delete" :disabled="busy || confirmation!==deleting.name">确认删除项目</button>
+    </form>
+  </ModalShell>
 </template>
 <style scoped>
 .delivery{display:grid;gap:24px;max-width:1280px}.delivery-workflow{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:24px;align-items:start}h2{font-size:17px;font-weight:600;margin-bottom:12px}form{display:grid;gap:16px}label{display:grid;gap:8px;font-size:13px;color:var(--station-muted)}input,select,textarea{border:1px solid var(--station-line);border-radius:8px;padding:10px 12px;background:white;width:100%;min-width:0;color:var(--station-ink)}button{border:1px solid var(--station-line);border-radius:8px;padding:9px 14px;width:fit-content;margin-right:8px;font-weight:600;font-size:13px}form>button{background:var(--station-accent);color:#fff;border-color:var(--station-accent)}button:disabled{opacity:.5}table{width:100%;text-align:left;font-size:13px}th,td{padding:12px;border-bottom:1px solid var(--station-line);vertical-align:top}.error{color:#b42318}p{margin:4px 0 18px;overflow-wrap:anywhere;font-size:13px;color:var(--station-muted)}a{color:var(--station-accent)}.table-card{overflow-x:auto}@media(max-width:1100px){.delivery-workflow{grid-template-columns:1fr}}

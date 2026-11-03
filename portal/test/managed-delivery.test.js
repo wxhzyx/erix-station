@@ -34,9 +34,10 @@ test('assignment validation rejects caller supplied arbitrary filesystem paths',
   for(const name of ['../a','/tmp/x','--config','A','a/b','a\nb']) assert.throws(()=>validateAssignment({...base,name}));
 });
 test('managed sessions reject unassigned project before any filesystem/user writes',async()=>{
-  const queries=[]; const pool={async query(sql,args){queries.push({sql,args});return {rows:[]};}};
+  const queries=[]; const pool={release(){},async connect(){return this;},async query(sql,args){queries.push({sql,args});return {rows:[]};}};
   await assert.rejects(createSession(pool,{userId:'u1',projectId:'~/projects/manual',config:{managedProjects:true,userSpaceRoot:'/must/not/write'}}),{code:'project_not_assigned'});
-  assert.equal(queries.length,1);assert.deepEqual(queries[0].args,['u1','manual']);
+  assert.deepEqual(queries.find(x=>x.sql.includes('FROM project_assignments')).args,['u1','manual']);
+  assert.equal(queries.at(-1).sql,'ROLLBACK');
   await assertAssigned({query:async()=>({rows:[{id:'assigned'}]})},'u1','~/projects/assigned');
 });
 test('quota limits are integers, zero blocks use, and unavailable gateway fails closed',async()=>{

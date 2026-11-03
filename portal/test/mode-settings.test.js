@@ -143,6 +143,15 @@ test('failed gateway revocation retains key for retry without leaking upstream e
   assert.equal(f.bindings.size,1);
 });
 
+test('member deletion blocks the chat key and retains LiteLLM historical key records',async()=>{
+  const f=fixture();await setModeSettings(f.pool,'alice','chat',selection,{gateway:f.gateway});
+  const blocked=[];f.gateway.blockKey=async body=>{blocked.push(body);};
+  f.gateway.deleteKey=async()=>assert.fail('historical key must not be deleted');
+  await revokeChatLlmConfig(f.pool,'alice',{gateway:f.gateway,preserveHistory:true});
+  await revokeChatLlmConfig(f.pool,'alice',{gateway:f.gateway,preserveHistory:true});
+  assert.equal(blocked.length,1);assert.ok(blocked[0].key);assert.equal(f.bindings.size,0);
+});
+
 test('failed save compensates while advisory lock is held, then rolls back', async () => {
   const f=fixture();
   await setModeSettings(f.pool,'alice','chat',selection,{gateway:f.gateway});

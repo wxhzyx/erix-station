@@ -174,11 +174,33 @@ async function disableUser(pool, fdeId) {
   );
 }
 
-async function stopContainer(pool, row, docker, log) {
-  const containerName = row.container_name || (row.fde_name ? `fde-${row.fde_name}` : null);
-  if (containerName) {
-    const removed = await removeFdeContainer(docker, containerName, { log });
-    if (!removed.ok) throw new Error(`container removal failed for ${containerName}`);
+export async function stopMemberContainers(pool, row, docker, log = console, config = {}) {
+  const owned = labels => labels?.['station.managed'] === 'true'
+    && labels['fde.name'] === row.fde_name
+    && (labels['station.stack'] ?? 'default') === (config.stackId ?? 'default');
+  const filters = { label: ['station.managed=true', `fde.name=${row.fde_name}`] };
+  const listed = await docker.listContainers(filters, { all: true });
+  if (listed.status !== 200 || !Array.isArray(listed.data)) throw new Error('Unable to enumerate member containers');
+  const registered = await pool.query('SELECT container_name FROM containers WHERE user_id = $1', [row.fde_id]);
+  const candidates = new Set([
+    ...registered.rows.map(c => c.container_name).filter(Boolean),
+    ...listed.data.filter(c => owned(c.Labels)).map(c => c.Id),
+  ]);
+  for (const name of candidates) {
+    const current = await docker.inspectContainer(name);
+    if (current.status === 404) continue;
+    if (current.status !== 200 || !owned(current.data?.Config?.Labels)) {
+      throw new Error(`Container ownership could not be verified: ${name}`);
+    }
+    // Use the immutable id so a replacement with the same name cannot be removed.
+    const id = current.data.Id;
+    if (!id) throw new Error('Container inspect did not return an id');
+    const removed = await removeFdeContainer(docker, id, { log });
+    if (!removed.ok) throw new Error(`container removal failed for ${name}`);
+  }
+  const remaining = await docker.listContainers(filters, { all: true });
+  if (remaining.status !== 200 || !Array.isArray(remaining.data) || remaining.data.some(c => owned(c.Labels))) {
+    throw new Error('Member containers remain; cleanup must be retried');
   }
   await pool.query(
     `UPDATE containers SET status = 'removed', updated_at = now()
@@ -202,8 +224,8 @@ async function revokeLlmKey(pool, row, gateway) {
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`llm-binding:${row.fde_name}`]);
-    await revokeFdeLlmConfigTx(client, { fdeId: row.fde_id, fdeName: row.fde_name, gateway });
-    await revokeChatLlmConfigTx(client, row.fde_id, { gateway });
+    await revokeFdeLlmConfigTx(client, { fdeId: row.fde_id, fdeName: row.fde_name, gateway, preserveHistory: true });
+    await revokeChatLlmConfigTx(client, row.fde_id, { gateway, preserveHistory: true });
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -344,7 +366,7 @@ export async function runOffboardingOnce(pool, config, {
   docker,
   log = console,
   lockFde = withFdeProvisioningLock,
-  stop = stopContainer,
+  stop = stopMemberContainers,
   revokeKey = revokeLlmKey,
   removeCredential = removeGitCredentialFile,
   disableGitAccount = disableGiteaAccount,
@@ -368,7 +390,7 @@ export async function runOffboardingOnce(pool, config, {
         if (step === 'disable-user') {
           await disableUser(pool, row.fde_id);
         } else if (step === 'stop-container') {
-          await stop(pool, row, docker, log);
+          await stop(pool, row, docker, log, config);
         } else if (step === 'revoke-runner-token') {
           await revokeRunnerToken(pool, row.fde_id);
         } else if (step === 'revoke-llm-key') {
