@@ -80,8 +80,12 @@ describe('Standalone chat', () => {
     const { wrapper } = await setup();
     const input = wrapper.get('input[type=file]');
     Object.defineProperty(input.element, 'files', { configurable:true, value:[new File(['first'], 'one.txt', {type:'text/plain'}),new File(['second'], 'two.txt',{type:'text/plain'})] });
-    await input.trigger('change'); await new Promise(r => setTimeout(r, 30)); await flushPromises();
-    expect(wrapper.text()).toContain('one.txt'); expect(wrapper.text()).toContain('two.txt');
+    await input.trigger('change');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('one.txt');
+      expect(wrapper.text()).toContain('two.txt');
+      expect(wrapper.text()).not.toContain('读取中');
+    }, { timeout: 3000 });
     mockApi.mockImplementation(async (path, opts) => {
       if (path.endsWith('/messages')) throw new Error('offline');
       if (opts?.method === 'POST') return {conversation:{id:'c1',title:'test'}};
@@ -115,7 +119,7 @@ describe('document extraction', () => {
     const input = wrapper.get('input[type=file]');
     Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['synthetic document'], name)] });
     await input.trigger('change');
-    await new Promise(r => setTimeout(r, 30)); await flushPromises();
+    await flushPromises();
   }
   it('sends extracted Unicode text, not document bytes, and displays warnings', async () => {
     const { wrapper } = await setup();
@@ -123,7 +127,7 @@ describe('document extraction', () => {
     mockApi.mockImplementation(async (path, opts) => path === '/api/attachments/extract'
       ? { name: 'report.pdf', text: '表格内容\n[已截断]', warnings: ['已截断'] } : original(path, opts));
     await upload(wrapper);
-    expect(wrapper.text()).toContain('已截断');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已截断'), { timeout: 3000 });
     await wrapper.get('form').trigger('submit'); await flushPromises();
     const body = JSON.parse(mockApi.mock.calls.find(([url]) => url.endsWith('/messages'))![1]!.body as string);
     expect(body.attachments[0].mime_type).toBe('text/plain');
@@ -136,6 +140,7 @@ describe('document extraction', () => {
     mockApi.mockImplementation((path, opts) => path === '/api/attachments/extract'
       ? new Promise(r => { resolve = r; }) : original(path, opts));
     await upload(wrapper);
+    await vi.waitFor(() => expect(mockApi.mock.calls.some(([url]) => url === '/api/attachments/extract')).toBe(true), { timeout: 3000 });
     await wrapper.get('form').trigger('submit'); await flushPromises();
     expect(mockApi.mock.calls.some(([url]) => url.endsWith('/messages'))).toBe(false);
     const extractionOpts = mockApi.mock.calls.find(([url]) => url === '/api/attachments/extract')![1]!;
@@ -168,8 +173,10 @@ describe('chat file drop', () => {
     await wrapper.get('.file-drop-region').trigger('dragenter', {dataTransfer});
     expect(wrapper.text()).toContain('松开鼠标');
     await wrapper.get('textarea').trigger('drop', {dataTransfer});
-    await new Promise(r=>setTimeout(r,30));await flushPromises();
-    expect(wrapper.text()).toContain('screen.png');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('screen.png');
+      expect(wrapper.text()).not.toContain('读取中');
+    }, { timeout: 3000 });
     expect(wrapper.text()).not.toContain('松开鼠标');
     expect(mockApi.mock.calls.some(([,opts])=>opts?.method === 'POST')).toBe(false);
     await wrapper.get('form').trigger('submit');await flushPromises();
