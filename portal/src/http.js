@@ -888,7 +888,7 @@ async function routeApi(req, res, ctx, url) {
   }
   const modeMatch = pathname.match(/^\/api\/me\/mode-settings\/(chat|work)$/);
   if (modeMatch && req.method === 'PUT') {
-    const session = await requireSession(req, ctx);
+    const session = await requireAdmin(req, ctx);
     requireJson(req);
     const body = await readJsonBody(req, ctx.config.maxBodyBytes);
     return sendJson(res, 200, await modeSettings.setModeSettings(pool, session.user.id, modeMatch[1], body, { gateway: ctx.llmGateway }));
@@ -1134,6 +1134,23 @@ async function requireAdmin(req, ctx) {
 async function handleAdminApi(req, res, ctx, url) {
   const { pathname } = url;
   const session = await requireAdmin(req, ctx); // 所有 /api/admin/* 端点统一先鉴权
+
+  // Assignments are admin-owned. The legacy own-write route is also admin-only.
+  const userModeMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/mode-settings(?:\/(chat|work))?$/);
+  if (userModeMatch) {
+    const userId = decodeUuid(userModeMatch[1]);
+    if (req.method === 'GET' && !userModeMatch[2]) {
+      return sendJson(res, 200, await modeSettings.getModeSettings(ctx.pool, userId, { gateway: ctx.llmGateway }));
+    }
+    if (req.method === 'PUT' && userModeMatch[2]) {
+      requireJson(req);
+      const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+      const result = await modeSettings.setModeSettings(ctx.pool, userId, userModeMatch[2], body, { gateway: ctx.llmGateway, actorId: session.user.id });
+      await auth.audit(ctx.pool, { actorId: session.user.id, action: 'admin.model_assignment', target: userId, details: { mode: userModeMatch[2], provider_id: body.provider_id, model_id: body.main_model_id } });
+      return sendJson(res, 200, result);
+    }
+    throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+  }
 
   const approvalAction = pathname.match(/^\/api\/admin\/project-approvals\/([^/]+)\/(review|approve|merge)$/);
   if (approvalAction) {

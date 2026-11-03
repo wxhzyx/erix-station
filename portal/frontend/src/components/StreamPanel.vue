@@ -335,7 +335,10 @@ function msgClass(en: Extract<StreamEntry, { kind: 'msg' }>): string {
   </p>
   <!-- 空态：旧版「选择或新建会话」默认文案（issue #332：曾按 `noDir && isPlatformAdmin` 分叉去
        引导「进管理台」，入口拦截后该形状不可达 ⇒ 分支已删，只剩这一条） -->
-  <div v-if="store.entries.length === 0">
+  <div v-if="store.entries.length === 0" class="work-empty">
+    <div class="station-emblem" aria-hidden="true">&gt;<span>_</span></div>
+    <span class="page-eyebrow">BUILD WITH CONTEXT</span>
+    <h2>{{ t('stream.workspaceReady') }}</h2>
     <p class="muted">{{ t('stream.chooseOrNewSession') }}</p>
   </div>
 

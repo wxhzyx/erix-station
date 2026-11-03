@@ -19,9 +19,7 @@ import RunStatusBar from '../components/RunStatusBar.vue';
 import ComposerBar from '../components/ComposerBar.vue';
 import QueuedInputsBar from '../components/QueuedInputsBar.vue';
 import SessionPickerModal from '../components/SessionPickerModal.vue';
-import LocaleSwitch from '../components/LocaleSwitch.vue';
-import StationModeSwitch from '../components/StationModeSwitch.vue';
-import TokenQuotaPanel from '../components/TokenQuotaPanel.vue';
+import StationShell from '../components/StationShell.vue';
 // issue #359（决策 §7 D9）P0b：顶栏「收工灯」——只回答“你的活儿被 git 保护住了吗”，平台零 git 写。
 import GitLightBadge from '../components/GitLightBadge.vue';
 import { useGitLight } from '../composables/useGitLight';
@@ -36,16 +34,6 @@ const store = useWorkbenchStore();
 
 // ---- issue #90：侧栏宽度拖拽调整（钳制/持久化/键盘微调在 composable 内）----
 const sidebar = useSidebarWidth();
-
-// 旧 who 文案：`login（role / fde_name）`，无 fde_name 时只显示 role。
-// issue #101 P2：括号形态随语言（zh 全角 / en 半角），两种形态各一个 key（模板插值）。
-const who = computed(() => {
-  const u = auth.user;
-  if (!u) return '';
-  return u.fde_name
-    ? t('workbench.who', { login: u.login, role: u.role, fde: u.fde_name })
-    : t('workbench.whoNoFde', { login: u.login, role: u.role });
-});
 
 // ---- 路由钩子注入（store 保持 router 无关，便于单测）----
 setWorkbenchHooks({
@@ -235,17 +223,16 @@ function jumpToLatest() {
 </script>
 
 <template>
+  <StationShell area="work">
   <!-- 拖拽期间 select-none 防选中文本 -->
   <div class="station-work h-screen flex flex-col" :class="sidebar.dragging.value && 'select-none'">
     <header class="station-header flex flex-wrap items-center gap-3">
-      <StationModeSwitch mode="work" />
-      <router-link to="/mode-settings" class="text-sm underline">{{ locale === 'en' ? 'API settings' : 'API 设置' }}</router-link>
       <button
         class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5 md:hidden"
         :aria-label="t('workbench.openNavigation')"
         @click="drawerOpen = !drawerOpen"
       >{{ t('workbench.nav') }}</button>
-      <h1 class="station-wordmark">FDE Station</h1>
+      <div class="work-heading"><span class="page-eyebrow">WORKSPACE / DEVELOP</span><h1>{{ locale === 'en' ? 'Development workspace' : '开发工作台' }}</h1></div>
       <!-- issue #84 P5.4：cwd 徽标（📁 短名；hover 显示全路径；点击复制） -->
       <button
         v-if="store.dirCwd"
@@ -264,10 +251,8 @@ function jumpToLatest() {
         @refresh="gitLight.load()"
         @prefill="onGitLightPrefill"
       />
-      <span class="flex-1 text-black/50 text-sm">{{ who }}</span>
-      <router-link v-if="auth.user?.role === 'admin'" to="/admin" class="text-sm underline">{{ t('common.adminConsole') }}</router-link>
-      <LocaleSwitch />
-      <TokenQuotaPanel />
+      <span class="flex-1"></span>
+      <router-link to="/settings?tab=usage" class="header-usage">{{ locale === 'en' ? 'Usage & quota' : '用量与额度' }}</router-link>
       <button
         class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5"
         @click="onLogout"
@@ -341,4 +326,5 @@ function jumpToLatest() {
       </section>
     </main>
   </div>
+  </StationShell>
 </template>

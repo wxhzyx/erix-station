@@ -21,6 +21,7 @@
 | [`design/principles.md`](design/principles.md) | **设计原理**：五条核心原理、规则对照、被否决方案、未决问题决策框架、实现者硬约束 | ✅ |
 | [`design/runner-integration.md`](design/runner-integration.md) | **runner 集成契约（WP3b）**：agentd/worker 职责、IPC 信封、租约/心跳/事件批、终态收敛、erix-agent `runToolLoop`/`TranscriptStore` 锚点（v0.9.0，§9.1 八方法） | ✅ |
 | [`design/project-approvals.md`](design/project-approvals.md) | 项目审批、管理员 AI 审查与精确版本合并、合并版本记录、运行端口 | ✅ |
+| [`design/console-ui.md`](design/console-ui.md) | 统一控制台 UI、设置分组及管理员模型分配权限 | INTEVA 扩展 |
 | [`design/chat-work-modes.md`](design/chat-work-modes.md) | 聊天 / 工作模式：独立 API 配置、附件限制、接口与升级说明 | ✅ |
 | [`design/conversation-state.md`](design/conversation-state.md) | **会话状态模型（issue #77）**：三层生命周期（执行/会话/工作区）、session-scoped transcript 目标态、引擎现状源码核对、pi 参照系、P0–P3 分阶段实施、红线与验收口径 | ✅（设计定稿待实施） |
 | [`design/directory-as-project.md`](design/directory-as-project.md) | **去项目化：目录即项目（P5）+ 文件面板（P6）**：sessions.cwd 化、端口去项目化（`eric-p-<port>`）、同项目并行放行（pi 对齐不锁）、UI 定稿布局、materializer 退役、迁移与部署序 | ✅（设计定稿待实施） |

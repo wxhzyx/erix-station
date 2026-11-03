@@ -9,7 +9,7 @@ import { useI18n } from 'vue-i18n';
 import { useAuthStore, afterLoginRoute } from '../stores/auth';
 import LocaleSwitch from '../components/LocaleSwitch.vue';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
@@ -56,14 +56,16 @@ async function onTotpSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-start md:items-center justify-center bg-white px-3 py-12">
-    <div class="w-full max-w-[22rem] rounded-lg border border-black/10 bg-white shadow-sm">
+  <div class="login-screen">
+    <section class="login-story"><div class="rail-brand"><span class="brand-mark" aria-hidden="true">F<span>_</span></span><div><strong>FDE Station</strong><small>INTEVA · WORKSPACE</small></div></div><div><h1>{{ locale === 'en' ? 'From an idea' : '从一个想法' }}<br><span>{{ locale === 'en' ? 'to working software.' : '到真正的交付。' }}</span></h1><p>{{ locale === 'en' ? 'Your AI workspace for conversations, development and delivery.' : '把对话、开发与交付连接起来。属于你的 AI 工作空间，从这里开始。' }}</p></div><small>THINK / BUILD / DELIVER</small></section>
+    <div class="login-card-wrap"><div class="login-card">
       <div class="p-4">
         <!-- 卡片头部：标题 + 语言切换（flex 头部，不遮挡表单） -->
         <div class="flex items-start justify-between gap-2 mb-3">
           <h2 class="text-xl font-medium">{{ t('login.title') }}</h2>
           <LocaleSwitch />
         </div>
+        <p class="login-subtitle">{{ locale === 'en' ? 'Sign in with your organization account to continue.' : '使用企业账号登录，进入你的工作空间。' }}</p>
 
         <a v-if="ssoEnabled && (!passwordEnabled || !auth.pendingToken)" href="/api/auth/sso"
           class="block text-center w-full rounded-md bg-brand text-white py-2 mb-4">{{ t('login.sso') }}</a>
@@ -112,6 +114,7 @@ async function onTotpSubmit() {
         <p class="text-red-600 text-sm mt-3 mb-0" role="alert">{{ auth.error }}</p>
         </template>
       </div>
+    </div>
     </div>
   </div>
 </template>

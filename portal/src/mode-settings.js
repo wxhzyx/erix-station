@@ -1,4 +1,4 @@
-// User-scoped mode selection. Upstream credentials remain exclusively in LiteLLM;
+// Administrator-managed, user-scoped model assignments. Upstream credentials remain exclusively in LiteLLM;
 // only the server stores chat virtual keys, never the browser or FDE container.
 import { randomUUID } from 'node:crypto';
 import { createLlmGatewayClient } from './llm-gateway.js';
@@ -50,12 +50,12 @@ function validateInput(mode, input) {
   }
 }
 
-export async function setModeSettings(pool, userId, mode, input, { gateway } = {}) {
+export async function setModeSettings(pool, userId, mode, input, { gateway, actorId = userId } = {}) {
   validateInput(mode, input);
   const user = await activeUser(pool, userId);
   if (mode === 'work') {
     if (!user.fde_name) throw new LlmError('workstation_required', '工作模式需要工位', { httpStatus: 409 });
-    const result = await setFdeLlmConfig(pool, { ...input, actorId: userId, fdeName: user.fde_name, gateway });
+    const result = await setFdeLlmConfig(pool, { ...input, actorId, fdeName: user.fde_name, gateway });
     return { provider_id: result.provider_id, main: result.main, embedding: result.embedding,
       vision: result.vision, api_key: 'configured' };
   }
@@ -124,12 +124,12 @@ export async function resolveChatLlmProvider(pool, userId, { gatewayUrl, gateway
   const catalog = await modeCatalog(gateway);
   const model = catalog.find((p) => p.id === row.provider_id)?.models.find((m) => m.id === row.model_id);
   if (!model?.enabled || !['text', 'vision'].includes(model.type)) {
-    throw new LlmError('llm_model_not_found', '聊天模型不可用，请重新配置', { httpStatus: 409 });
+    throw new LlmError('llm_model_not_found', '聊天模型不可用，请联系管理员', { httpStatus: 409 });
   }
   // A renamed gateway model requires a deliberate settings save; fail closed,
   // rather than silently widening the key whitelist during a chat request.
   if (model.model_name !== row.model_name) {
-    throw new LlmError('llm_config_stale', '聊天模型调用名已变更，请重新保存聊天配置', { httpStatus: 409 });
+    throw new LlmError('llm_config_stale', '聊天模型已变更，请联系管理员更新配置', { httpStatus: 409 });
   }
   if (!gatewayUrl || !row.api_key) throw new LlmError('llm_not_configured', '聊天 API 未配置', { httpStatus: 409 });
   return { base_url: gatewayUrl, api_key: row.api_key, model: row.model_name, supportsImages: model.type === 'vision' };

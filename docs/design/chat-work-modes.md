@@ -1,6 +1,6 @@
 # Chat and work modes
 
-The workbench now has a top-left **聊天模式 / 工作模式** switch. Existing `/` and
+The workbench now has a persistent **聊天模式 / 工作模式** navigation (left rail on desktop, top navigation on mobile). Existing `/` and
 `/session/:id` routes, runner configuration and work transcripts retain their
 meaning. `/chat` and `/chat/:id` provide project-free conversations: no directory,
 container, tool execution or work session is created. Mode switching does not
@@ -9,10 +9,11 @@ turns are stored in PostgreSQL and can be reopened from conversation history.
 
 ## Per-user APIs
 
-`/mode-settings` lets each signed-in user choose independent providers/models
-for chat and work. Administrators continue to provision upstream API addresses
-and credentials in the existing LiteLLM administration UI. This feature does not
-accept arbitrary upstream URLs or credentials from the chat client.
+As of the 2026-11-03 user-directed redesign, model selection is administrator-owned.
+`/admin/llm` manages API providers and credentials, and `/admin/model-access`
+assigns separate chat/work models to each active member. `/settings` contains
+personal preferences and usage only; the old `/mode-settings` bookmark redirects
+there. Existing model bindings remain unchanged. See [console-ui.md](console-ui.md).
 
 Work retains `fde_llm_bindings` and its existing virtual-key/Traefik delivery.
 Chat uses `chat_llm_bindings`, with a distinct model-restricted virtual key that
@@ -26,12 +27,15 @@ or provider deployments are created by installing this code.
 
 All endpoints require a login session and pass the existing forced-password and
 same-origin write guards. Ownership comes exclusively from the authenticated
-user, never a request-body user identifier.
+user for chat. Admin model-assignment routes require the administrator role and
+use a validated target UUID in the URL, never a request-body owner override.
 
 * `GET /api/me/mode-settings`: `{chat, work, providers}`.
-* `PUT /api/me/mode-settings/chat`: `{provider_id, main_model_id}`.
-* `PUT /api/me/mode-settings/work`: the same plus optional
+* `PUT /api/me/mode-settings/chat`: legacy admin-only self assignment; `{provider_id, main_model_id}`.
+* `PUT /api/me/mode-settings/work`: legacy admin-only self assignment, plus optional
   `embedding_model_id`, `vision_model_id`. Returns the saved selection.
+* `GET /api/admin/users/:id/mode-settings`: admin-only read of the target member.
+* `PUT /api/admin/users/:id/mode-settings/:mode`: admin-only assignment; same bodies as above, audited with the administrator and target member.
 * `GET /api/chat/conversations`: latest 100 owned conversations.
 * `POST /api/chat/conversations`: create an empty owned conversation.
 * `GET /api/chat/conversations/:id`: conversation and message history.
@@ -65,7 +69,7 @@ Apply additive migrations `0028-mode-settings.sql` and `0029-chat-mode.sql` usin
 the existing migration runner, then deploy the portal and rebuilt frontend.
 The frozen baseline and all existing migration checksums are unchanged. No work
 sessions or existing API bindings need conversion. Chat starts unconfigured until
-a user saves a chat model. Existing runner images and credentials are unchanged.
+an administrator assigns a chat model (SSO onboarding can also provision the configured default). Existing runner images and credentials are unchanged.
 
 ## Document attachments (PDF / Word / Excel / PowerPoint)
 
