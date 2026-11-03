@@ -1,0 +1,2 @@
+FROM ghcr.io/erixwong/erix-station-fde-proxy@sha256:b9701494f4db2ab949b42f668201958e8fc29e4e29284048e87e33a181cbf61f
+COPY deploy/fde-proxy/server.js /app/server.js

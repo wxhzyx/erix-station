@@ -28,6 +28,11 @@ Host runner 不提供不可信代码隔离，不能给用户项目复用，也�
 数据库迁移必须是向后兼容的增量变更。回退应用时不自动恢复数据库备份，避免丢弃部署后用户数据。
 已生成的镜像和发布记录保留供回退；不做全局 Docker prune 或删除其他业务镜像。
 
+本服务器 Docker Hub 直连超时，内部构建使用官方 GHCR v0.1.47 的不可变基础镜像。
+Linux 依赖仍按本次 lockfile 重新安装，前端重新编译，portal/runner/proxy 源码均来自本次 main SHA。
+`runtime-contract.json` 钉住标准 Dockerfile 的运行环境契约；改变 SDK、系统包或运行环境时，
+必须审查并更新专用 CI Dockerfile 的基础镜像及契约校验和，否则构建失败，不会沿用错误的旧环境上线。
+
 ## 主机文件
 
 - `/usr/local/bin/fde-gitea-runner`：官方 Runner 二进制，下载后校验官方 SHA-256。

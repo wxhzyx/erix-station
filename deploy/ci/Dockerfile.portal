@@ -1,0 +1,14 @@
+FROM ghcr.io/erixwong/erix-station-portal@sha256:e6c5a80a7ea299645139a37a3c4197a41f2f82f5f78d3eb96033275458cd019b
+# Runtime packages come from the verified upstream release; app files are rebuilt.
+RUN rm -rf /app/node_modules /app/portal /app/deploy/migrations
+COPY package.json package-lock.json /app/
+COPY node_modules /app/node_modules
+COPY portal/src /app/portal/src
+COPY portal/static /app/portal/static
+COPY portal/frontend/dist /app/portal/static/app
+COPY docs/data /app/docs/data
+COPY deploy/migrations /app/deploy/migrations
+ARG STATION_REVISION
+ARG STATION_BUILD_DATE
+RUN node -e 'const fs=require("fs");fs.writeFileSync("/app/portal/static/version.json",JSON.stringify({version:require("/app/package.json").version,revision:process.env.STATION_REVISION,built_at:process.env.STATION_BUILD_DATE})+"\n")'
+LABEL org.opencontainers.image.revision="${STATION_REVISION}"

@@ -1,0 +1,9 @@
+.git
+.work-orders
+.env
+.env.*
+**/.env
+**/.env.*
+portal/frontend/node_modules
+**/test
+**/*.log

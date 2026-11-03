@@ -1,0 +1,15 @@
+FROM ghcr.io/erixwong/erix-station-fde@sha256:d241809a85bf8e35c1f3c01876af8922b7b553a392991b7307203468a5a62548
+USER root
+RUN rm -rf /opt/erix/node_modules /opt/erix/lib /opt/erix/skills
+COPY runner/package.json runner/package-lock.json /opt/erix/
+COPY runner/node_modules /opt/erix/node_modules
+COPY runner/agentd.js runner/worker.js /opt/erix/
+COPY runner/lib /opt/erix/lib
+COPY runner/skills /opt/erix/skills
+COPY runner/entrypoint.sh /usr/local/bin/station-agentd-entrypoint
+COPY runner/healthcheck.sh /usr/local/bin/station-agentd-healthcheck
+RUN chmod 0755 /usr/local/bin/station-agentd-entrypoint /usr/local/bin/station-agentd-healthcheck
+ARG STATION_REVISION
+ARG STATION_BUILD_DATE
+RUN node -e 'const fs=require("fs");const v=p=>JSON.parse(fs.readFileSync(p)).version;fs.writeFileSync("/opt/erix/build-info.json",JSON.stringify({station_version:v("/opt/erix/package.json"),engine_version:v("/opt/erix/node_modules/erix-agent/package.json"),revision:process.env.STATION_REVISION,built_at:process.env.STATION_BUILD_DATE})+"\n")'
+LABEL org.opencontainers.image.revision="${STATION_REVISION}"
