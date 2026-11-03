@@ -47,7 +47,7 @@ export function maskKey(key) {
 
 function getGatewayClient(candidate) {
   if (candidate && typeof candidate === 'object' && [
-    'listModels', 'generateKey', 'updateKey', 'deleteKey', 'listCredentials', 'createCredential',
+    'listModels', 'generateKey', 'updateKey', 'deleteKey', 'blockKey', 'listCredentials', 'createCredential',
   ].some((method) => typeof candidate[method] === 'function')) {
     return candidate;
   }
@@ -1544,8 +1544,8 @@ export async function setFdeLlmConfig(pool, {
   };
 }
 
-/** Delete the LiteLLM key before committing offboarding; a failed revoke aborts the DB transaction. */
-export async function revokeFdeLlmConfigTx(client, { fdeId, fdeName, gateway } = {}) {
+/** Revoke before committing; member deletion blocks the key to retain gateway history. */
+export async function revokeFdeLlmConfigTx(client, { fdeId, fdeName, gateway, preserveHistory = false } = {}) {
   const current = await client.query(
     `SELECT api_key, key_alias, gateway FROM fde_llm_bindings
       WHERE fde_id = $1 AND state = 'active' FOR UPDATE`,
@@ -1554,7 +1554,9 @@ export async function revokeFdeLlmConfigTx(client, { fdeId, fdeName, gateway } =
   const row = current.rows[0];
   if (!row) return false;
   if (row.gateway === 'litellm') {
-    await getGatewayClient(gateway).deleteKey({ keys: [row.api_key ?? row.key_alias] });
+    const gw = getGatewayClient(gateway);
+    if (preserveHistory) await gw.blockKey({ key: row.api_key ?? row.key_alias });
+    else await gw.deleteKey({ keys: [row.api_key ?? row.key_alias] });
   }
   const result = await client.query(
     `UPDATE fde_llm_bindings

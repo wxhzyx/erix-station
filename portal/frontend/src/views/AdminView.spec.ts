@@ -1018,7 +1018,8 @@ describe('AdminView · FDE 用户', () => {
     expect(rows[0].findAll('td')[7].text())
       .toBe(new Date('2026-10-03T12:00:00.000Z').toLocaleString('zh-CN'));
     expect(rows[1].findAll('td')[7].text()).toBe('从未登录');
-    expect(rows[0].findAll('button')).toHaveLength(3);
+    expect(rows[0].findAll('button')).toHaveLength(4);
+    expect(rows[0].get('[data-test="delete-member"]').text()).toBe('删除成员');
     expect(list.find('[data-test="user-menu-button"]').exists()).toBe(false);
     expect(rows[0].attributes('tabindex')).toBeUndefined();
     await rows[0].trigger('click');
@@ -1404,7 +1405,7 @@ describe('AdminView · FDE 用户', () => {
     await wrapper.get('[data-test="open-user-delete"]').trigger('click');
     await flushPromises();
     expect(wrapper.find('[data-test="user-edit-modal"]').exists()).toBe(false);
-    expect(wrapper.get('[data-test="user-delete-modal"]').text()).toContain('账号将立即停用并开始 FDE 下线');
+    expect(wrapper.get('[data-test="user-delete-modal"]').text()).toContain('Gitea 仓库、提交历史和 LiteLLM 历史用量保留');
     expect(document.body.style.overflow).toBe('hidden');
     const confirmation = wrapper.get('[data-test="delete-login-confirmation"]');
     const confirmButton = wrapper.get('[data-test="confirm-user-delete"]');

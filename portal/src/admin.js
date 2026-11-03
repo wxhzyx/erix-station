@@ -95,6 +95,7 @@ export async function listUsers(pool) {
            FROM login_sessions
           GROUP BY user_id
        ) sessions ON sessions.user_id = users.id
+      WHERE users.deleted_at IS NULL OR (offboarding.state IS NOT NULL AND offboarding.state <> 'done')
       ORDER BY users.created_at ASC, users.login ASC`,
   );
   return { items: r.rows.map(safeUser) };
@@ -195,10 +196,11 @@ export async function createUser(pool, { actorId = null, login, display_name, pa
   }
 
   const existingResult = await pool.query(
-    `SELECT id, status FROM users WHERE fde_name = $1 FOR UPDATE`,
+    `SELECT id, status, deleted_at FROM users WHERE fde_name = $1 FOR UPDATE`,
     [fde_name],
   );
   const existing = existingResult.rows[0] ?? null;
+  if (existing?.deleted_at) throw new AdminError('user_deleted', '该身份已删除并保留历史记录，不能重新激活', { httpStatus: 409 });
   if (existing && existing.status !== 'disabled') {
     throw new AdminError('fde_name_conflict', `fde_name ${fde_name} 已被占用`, { httpStatus: 409 });
   }
@@ -395,7 +397,7 @@ export async function updateUser(pool, userId, updates, { actorId = null } = {})
   let result;
   try {
     const offboardingGuard = updates.status === 'active' || changesFdeName
-      ? `AND NOT EXISTS (SELECT 1 FROM fde_offboarding WHERE fde_id = users.id)`
+      ? `AND users.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM fde_offboarding WHERE fde_id = users.id)`
       : '';
     result = await pool.query(
       `WITH updated AS (
@@ -472,13 +474,13 @@ export async function deleteUser(pool, { actorId, userId, config, log = console 
       [userId],
     );
 
-    if (resources.rows[0]?.has_resources || workspaceExists(config, fdeName)) {
+    if (fdeName || resources.rows[0]?.has_resources || workspaceExists(config, fdeName)) {
       if (!fdeName || !projects.validateFdeName(fdeName).ok) {
         throw new AdminError('user_fde_name_missing', '有关联资源的用户缺少有效 fde_name，无法安全下线', { httpStatus: 409 });
       }
       offboarding = await enqueueOffboarding(client, { fdeId: userId, fdeName });
       await client.query(
-        `UPDATE users SET status = 'disabled', disabled_at = COALESCE(disabled_at, now()) WHERE id = $1`,
+        `UPDATE users SET status = 'disabled', deleted_at = COALESCE(deleted_at, now()), disabled_at = COALESCE(disabled_at, now()) WHERE id = $1`,
         [userId],
       );
       await client.query(`DELETE FROM login_sessions WHERE user_id = $1`, [userId]);
@@ -497,7 +499,7 @@ export async function deleteUser(pool, { actorId, userId, config, log = console 
       );
     } else {
       await client.query(
-        `UPDATE users SET status = 'disabled', disabled_at = COALESCE(disabled_at, now()) WHERE id = $1`,
+        `UPDATE users SET status = 'disabled', deleted_at = COALESCE(deleted_at, now()), disabled_at = COALESCE(disabled_at, now()) WHERE id = $1`,
         [userId],
       );
       await client.query(`DELETE FROM login_sessions WHERE user_id = $1`, [userId]);

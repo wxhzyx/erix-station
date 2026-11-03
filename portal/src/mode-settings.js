@@ -137,23 +137,26 @@ export async function resolveChatLlmProvider(pool, userId, { gatewayUrl, gateway
 
 /** Disabled users cannot send; revoke their server-only virtual key as well.
  * Called by admin HTTP paths and the retryable offboarding step. */
-export async function revokeChatLlmConfigTx(client, userId, { gateway } = {}) {
+export async function revokeChatLlmConfigTx(client, userId, { gateway, preserveHistory = false } = {}) {
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`mode-chat:${userId}`]);
   const { rows } = await client.query('SELECT api_key FROM chat_llm_bindings WHERE user_id = $1 FOR UPDATE', [userId]);
   if (!rows[0]) return;
-  const gw = typeof gateway?.deleteKey === 'function' ? gateway : createLlmGatewayClient({
+  const gw = (typeof gateway?.deleteKey === 'function' || typeof gateway?.blockKey === 'function') ? gateway : createLlmGatewayClient({
     adminUrl: gateway?.llmGatewayAdminUrl, masterKey: gateway?.llmGatewayMasterKey,
   });
-  try { await gw.deleteKey({ keys: [rows[0].api_key] }); }
+  try {
+    if (preserveHistory) await gw.blockKey({ key: rows[0].api_key });
+    else await gw.deleteKey({ keys: [rows[0].api_key] });
+  }
   catch { throw new LlmError('llm_revoke_failed', '聊天 API 密钥撤销失败，请重试禁用操作', { httpStatus: 502 }); }
   await client.query('DELETE FROM chat_llm_bindings WHERE user_id = $1', [userId]);
 }
 
-export async function revokeChatLlmConfig(pool, userId, { gateway } = {}) {
+export async function revokeChatLlmConfig(pool, userId, { gateway, preserveHistory = false } = {}) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await revokeChatLlmConfigTx(client, userId, { gateway });
+    await revokeChatLlmConfigTx(client, userId, { gateway, preserveHistory });
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});

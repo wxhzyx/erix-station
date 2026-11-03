@@ -285,6 +285,8 @@ function fakeDocker() {
   const calls = [];
   return {
     calls,
+    async listContainers() { return {status:200,data:[]}; },
+    async inspectContainer() { return {status:404}; },
     async stopContainer(name) {
       calls.push(['stop', name]);
       return { status: 404 };
@@ -335,7 +337,7 @@ test('offboarding runs every step idempotently when external resources are alrea
   assert.equal(pool.job.steps['revoke-git-account-access'].note, 'No linked Git account');
   assert.ok(pool.job.workspace_purge_after instanceof Date);
   assert.deepEqual(docker.calls, [
-    ['stop', 'fde-alice'], ['remove-container', 'fde-alice'], ['remove-network', 'fde-alice'],
+    ['remove-network', 'fde-alice'],
   ]);
   assert.ok(warnings.length > 0, 'failed Docker network removal is non-fatal and logged');
   assert.ok(pool.queryLog.some(({ sql }) => sql.includes("SET state = 'done'")));
@@ -372,7 +374,7 @@ test('offboarding persists the failed step and retry resumes without repeating c
   assert.equal(completed.state, 'done');
   assert.equal(pool.job.attempt, 2);
   assert.equal(credentialAttempts, 2);
-  assert.equal(docker.calls.filter(([action]) => action === 'stop').length, 1);
+  assert.equal(docker.calls.filter(([action]) => action === 'stop').length, 0);
 });
 
 test('offboarding revokes an active LiteLLM key and retries a gateway failure', async (t) => {
@@ -391,8 +393,8 @@ test('offboarding revokes an active LiteLLM key and retries a gateway failure', 
     userSpaceRoot: root,
     workspaceRetentionDays: 30,
     dockerHost: 'unused',
-    async deleteKey({ keys }) {
-      keyDeletes.push(keys);
+    async blockKey({ key }) {
+      keyDeletes.push([key]);
       if (keyDeletes.length === 1) throw new Error('LiteLLM unavailable');
     },
   };

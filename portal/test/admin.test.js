@@ -101,7 +101,7 @@ class AdminPool extends FakePool {
           .map(() => ({ '?column?': 1 })),
       };
     }
-    if (sql.includes('SELECT id, status FROM users WHERE fde_name')) {
+    if (sql.includes('SELECT id, status, deleted_at FROM users WHERE fde_name')) {
       const user = this.users.find((u) => u.fde_name === params[0]);
       return { rows: user ? [{ id: user.id, status: user.status }] : [] };
     }
@@ -899,7 +899,7 @@ test('admin 用户管理：DELETE 自停用冲突；有资源时入队，无资�
     }
 
     res = await fetch(`${base}/api/admin/users/${FDE_USER.id}`, { method: 'DELETE', headers: { cookie } });
-    assert.equal(res.status, 204);
+    assert.equal(res.status, 202);
     assert.equal(pool.users.some((user) => user.id === FDE_USER.id), true);
     assert.equal(pool.users.find((user) => user.id === FDE_USER.id).status, 'disabled');
     assert.equal(pool.sessions.some((session) => session.user_id === FDE_USER.id), false);
@@ -976,6 +976,8 @@ function makeDeleteUserPool(fdeName) {
       if (sql.includes('SELECT id, login, fde_name FROM users WHERE id = $1 FOR UPDATE')) {
         return { rows: [user] };
       }
+      if (sql.includes('INSERT INTO fde_offboarding')) return {rows:[]};
+      if (sql.includes('FROM fde_offboarding')) return {rows:[{state:'pending',steps:{}}]};
       if (sql.includes('AS has_resources')) return { rows: [{ has_resources: false }] };
       if (sql.includes('DELETE FROM login_sessions') || sql.includes('DELETE FROM login_pending')) return { rows: [] };
       if (sql.includes('DELETE FROM api_tokens') || sql.includes('DELETE FROM preview_grants')
@@ -1016,7 +1018,7 @@ test('deleteUser：只按配置的用户空间根判断 workspace，禁用后保
     userId: FDE_USER.id,
     config: { userSpaceRoot: path.join(root, 'configured-users') },
     log: { warn() {} },
-  }), { ok: true });
+  }), { ok: true, offboarding:{state:'pending',step:'disable-user',error:null,workspace_purge_after:null} });
   assert.ok(calls.some((sql) => sql.includes("UPDATE users SET status = 'disabled'")));
   assert.equal(user.status, 'disabled');
   assert.equal(calls.some((sql) => sql.includes('DELETE FROM users')), false);
@@ -1032,7 +1034,7 @@ test('deleteUser：用户空间已不存在时凭据清理按幂等成功处理'
     userId: FDE_USER.id,
     config: { userSpaceRoot: missingRoot },
     log: { warn: (message) => warnings.push(message) },
-  }), { ok: true });
+  }), { ok: true, offboarding:{state:'pending',step:'disable-user',error:null,workspace_purge_after:null} });
   assert.equal(warnings.length, 0, 'workspace 根目录或凭据已不存在时按幂等清理成功处理');
 });
 

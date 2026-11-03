@@ -20,9 +20,9 @@ test('SSO identities do not inherit roles or link to local usernames; issuer nam
   const claims = { sub: 'JXu14', name: 'Test Employee', email: 'employee@example.com', role: 'admin' };
   const a = stationIdentity(settings, claims);
   assert.equal(a.role, 'fde'); assert.equal(a.email, null);
-  assert.match(a.fdeName, /^sso-jxu14-[0-9a-f]{8}$/);
+  assert.equal(a.login, 'JXu14'); assert.equal(a.fdeName, 'jxu14'); assert.equal(a.displayName, claims.name);
   assert.deepEqual(a, stationIdentity(settings, claims));
-  assert.notEqual(a.fdeName, stationIdentity({ ...settings, issuer: 'https://other.example/' }, claims).fdeName);
+  assert.notEqual(a.subject, stationIdentity({ ...settings, issuer: 'https://other.example/' }, claims).subject);
   assert.equal(stationIdentity({ ...settings, adminSubjects: ['JXu14'] }, claims).role, 'admin');
   assert.equal(stationIdentity(settings, { ...claims, email_verified: true }).email, claims.email);
   assert.throws(() => stationIdentity(settings, { sub: 'bad\nidentity' }), /有效身份/);
@@ -34,6 +34,9 @@ function fakePool(existing = null) {
     calls.push({ sql, args });
     if (sql.startsWith('SELECT * FROM users')) return { rows };
     if (sql.startsWith('SELECT id FROM git_hosts')) return { rows: [{ id: 'host' }] };
+    if (sql.startsWith('UPDATE users')) {
+      Object.assign(rows[0], {login:args[1], display_name:args[2], email:args[3]}); return {rows};
+    }
     if (sql.startsWith('INSERT INTO users')) {
       const user = { id: 'user-id', login: args[0], status: 'active', role: args[3], oidc_sub: args[4] };
       rows.push(user); return { rows: [user] };
@@ -58,6 +61,24 @@ test('disabled SSO identities cannot log in or trigger reactivation', async () =
   await assert.rejects(provisionSsoIdentity(pool, settings, { sub: 'employee' }), { code: 'sso_account_disabled' });
   assert.equal(pool.calls.some(c => c.sql.startsWith('INSERT')), false);
   assert.equal(pool.calls.at(-1).sql, 'ROLLBACK');
+});
+
+test('SSO refreshes exact domain login/name while preserving UUID, workspace and role', async () => {
+  const pool=fakePool({id:'stable',status:'active',login:'sso-old-hash',fde_name:'sso-old-hash',role:'fde'});
+  const user=await provisionSsoIdentity(pool,settings,{sub:'stable-sub',preferred_username:'JXu14',name:'Xu, Jim(IT)'});
+  assert.equal(user.login,'JXu14');assert.equal(user.display_name,'Xu, Jim(IT)');
+  assert.equal(user.id,'stable');assert.equal(user.fde_name,'sso-old-hash');assert.equal(user.role,'fde');
+  assert.equal(pool.calls.some(c=>c.sql.includes('INSERT INTO fde_onboarding')),false);
+});
+
+test('an existing username collision rolls back rather than linking another account', async()=>{
+  const calls=[];const db={release(){},async query(sql){calls.push(sql);
+    if(sql.startsWith('SELECT * FROM users'))return {rows:[{id:'existing',status:'active'}]};
+    if(sql.startsWith('UPDATE users'))throw Object.assign(new Error('duplicate'),{code:'23505'});
+    return {rows:[]};
+  }};
+  await assert.rejects(provisionSsoIdentity({connect:async()=>db},settings,{sub:'subject',preferred_username:'occupied'}),{code:'sso_identity_conflict'});
+  assert.equal(calls.at(-1),'ROLLBACK');
 });
 
 test('callback rejects missing, replayed, and wrong-browser state before token exchange', async () => {

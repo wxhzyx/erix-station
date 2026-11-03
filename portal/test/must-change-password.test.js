@@ -67,7 +67,7 @@ class MustChangePool extends FakePool {
     this.sqlLog.push({ sql, params });
 
     // ---- users 查重 / 查行（createUser、resetUserPassword、自助改密）----
-    if (sql.includes('SELECT id, status FROM users WHERE fde_name')) {
+    if (sql.includes('SELECT id, status, deleted_at FROM users WHERE fde_name')) {
       const user = this.users.find((u) => u.fde_name === params[0]);
       return { rows: user ? [{ id: user.id, status: user.status }] : [] };
     }

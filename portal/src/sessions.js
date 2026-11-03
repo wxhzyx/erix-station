@@ -21,7 +21,7 @@ import { projectTranscriptForDisplay } from 'erix-agent';
 import { fetchUserTextTurns } from './session-text.js';
 import { appendUserInputTurn } from './transcript-store.js';
 import { allocSeq } from './seq.js';
-import { assertAssigned } from './managed-projects.js';
+import { assertAssigned, lockMemberProjects } from './managed-projects.js';
 // #322：本文件**不再直接调** `chatCompletion`（手工改名走 `./title-llm.js` 的唯一生成入口）；
 // 下面三个「一次对话请求」的通用件仍在此重新导出，只为既有调用方与文档口径不受影响。
 import { chatCompletionsUrl, extractAssistantText, redactSecret } from './llm-chat.js';
@@ -194,7 +194,20 @@ export async function listSessions(pool, { userId, projectId, cwd, cursor, limit
  * 「＋新建目录」语义；直写 FDE 家目录 bind mount <userSpaceRoot>/<fde>/projects/<name>）。
  * projects 表写入路径已退役：不再要求/不再写 project_id（列留档，迁移 0008 解除 NOT NULL）。
  */
-export async function createSession(pool, { userId, projectId, title, model, config }) {
+export async function createSession(pool, options) {
+  if (!options.config?.managedProjects) return createSessionImpl(pool, options);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await lockMemberProjects(client, options.userId);
+    const result = await createSessionImpl(client, options);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+
+async function createSessionImpl(pool, { userId, projectId, title, model, config }) {
   const cwd = validateSessionCwd(projectId);
   if (config?.managedProjects) await assertAssigned(pool, userId, cwd);
   const name = CWD_RE.exec(cwd)[1];
@@ -529,6 +542,7 @@ export async function postMessage(pool, {
   let clippedTitle = null; // issue #114：首条消息截断出的默认标题（COMMIT 后回调用）
   try {
     await client.query('BEGIN');
+    await lockMemberProjects(client, userId);
     const s = await fetchSession(client, sessionId, userId, { forUpdate: true });
 
     const active = await client.query(

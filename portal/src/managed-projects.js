@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { AdminError } from './admin.js';
 import { assertSafePath } from './fsutil.js';
 import { readDeliveryPackage } from './delivery-package.js';
+import { validateFdeName } from './projects.js';
 
 const runFile = promisify(execFile);
 const ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -33,14 +34,83 @@ export async function listPackages(pool) {
 }
 export async function listAssignments(pool, userId = null) {
   return (await pool.query(`SELECT a.id,a.user_id,a.package_id,a.name,a.instructions,a.status,a.repo_url,a.last_error,
-    a.created_at,u.login,p.name AS package_name FROM project_assignments a
+    a.created_at,a.deleted_at,u.login,p.name AS package_name FROM project_assignments a
     JOIN users u ON u.id=a.user_id JOIN delivery_packages p ON p.id=a.package_id
-    ${userId ? 'WHERE a.user_id=$1' : ''} ORDER BY a.created_at DESC`, userId ? [userId] : [])).rows;
+    WHERE u.deleted_at IS NULL AND (a.deleted_at IS NULL OR a.cleanup_completed_at IS NULL)
+    ${userId ? 'AND a.user_id=$1 AND a.deleted_at IS NULL' : ''} ORDER BY a.created_at DESC`, userId ? [userId] : [])).rows;
 }
 export async function assertAssigned(pool, userId, cwd) {
-  const row = (await pool.query(`SELECT id FROM project_assignments WHERE user_id=$1 AND name=$2 AND status='ready'`,
+  const row = (await pool.query(`SELECT id FROM project_assignments WHERE user_id=$1 AND name=$2 AND status='ready' AND deleted_at IS NULL`,
     [userId, cwd.replace(/^~\/projects\//, '')])).rows[0];
   if (!row) throw new AdminError('project_not_assigned', '该项目尚未由管理员下发', { httpStatus: 403 });
+}
+
+/** Serializes session creation/sends with assignment removal, across replicas. */
+export async function lockMemberProjects(client, userId) {
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`member-projects:${userId}`]);
+}
+
+/** Retain the assignment and upstream repository. Only remove its local directory. */
+export async function deleteAssignment(pool, { id, actorId, confirmation, config }) {
+  if (!ID.test(id)) throw new AdminError('not_found', '项目不存在', { httpStatus: 404 });
+  const client = await pool.connect();
+  let a;
+  try {
+    await client.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [`assignment:${id}`]);
+    await client.query('BEGIN');
+    a = (await client.query(`SELECT a.*,u.fde_name FROM project_assignments a
+      JOIN users u ON u.id=a.user_id WHERE a.id=$1 FOR UPDATE OF a`, [id])).rows[0];
+    if (!a) throw new AdminError('not_found', '项目不存在', { httpStatus: 404 });
+    if (confirmation !== a.name) throw new AdminError('confirmation_required', '请输入完整项目名称确认删除');
+    if (a.cleanup_completed_at) { await client.query('COMMIT'); return { ok: true }; }
+    await lockMemberProjects(client, a.user_id);
+    const cwd = `~/projects/${a.name}`;
+    const active = await client.query(`SELECT r.id FROM runs r JOIN chat_sessions s ON s.id=r.session_id
+      WHERE s.user_id=$1 AND s.cwd=$2 AND r.status IN ('queued','running','cancelling') LIMIT 1`, [a.user_id, cwd]);
+    if (active.rows.length) throw new AdminError('project_busy', '请先停止该项目正在执行的任务，再删除项目', { httpStatus: 409 });
+    await client.query(`UPDATE project_assignments SET deleted_at=COALESCE(deleted_at,now()),last_error=NULL WHERE id=$1`, [id]);
+    await client.query(`UPDATE chat_sessions SET status='archived',updated_at=now() WHERE user_id=$1 AND cwd=$2`, [a.user_id, cwd]);
+    await client.query(`INSERT INTO audit_log(actor_id,action,target,details) VALUES($1,'admin.project_deleted',$2,$3)`,
+      [actorId, id, JSON.stringify({ user_id: a.user_id, name: a.name, repository_retained: true })]);
+    await client.query('COMMIT');
+    // The durable tombstone prevents new sessions before touching the filesystem.
+    if (!validateFdeName(a.fde_name).ok || !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(a.name) || !config.userSpaceRoot) {
+      throw new Error('Unsafe project directory');
+    }
+    const root = path.resolve(config.userSpaceRoot);
+    const target = path.join(root, a.fde_name, 'projects', a.name);
+    const trashRoot = path.join(root, '.deleted-projects');
+    const trash = path.join(trashRoot, id);
+    assertSafePath(root, target); assertSafePath(root, trash);
+    await fs.mkdir(trashRoot, { recursive: true, mode: 0o700 });
+    // Quarantine outside the user's mounted home before recursive cleanup.
+    // Retries use the immutable assignment id, never an arbitrary supplied path.
+    let exists = true;
+    try { await fs.lstat(target); }
+    catch (e) { if (e.code === 'ENOENT') exists = false; else throw e; }
+    if (exists) {
+      const markerPath = path.join(target, '.fde-assignment.json');
+      assertSafePath(root, markerPath);
+      const marker = JSON.parse(await fs.readFile(markerPath, 'utf8'));
+      if (marker.id !== id || marker.package_id !== a.package_id) throw new Error('Project ownership marker mismatch');
+      try { await fs.lstat(trash); throw new Error('Project cleanup conflict'); }
+      catch (e) { if (e.code !== 'ENOENT') throw e; }
+      assertSafePath(root, target);
+      await fs.rename(target, trash);
+    }
+    assertSafePath(root, trash);
+    await fs.rm(trash, { recursive: true, force: true });
+    await client.query(`UPDATE project_assignments SET cleanup_completed_at=now(),last_error=NULL WHERE id=$1`, [id]);
+    return { ok: true, repository_retained: true };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (a) await client.query(`UPDATE project_assignments SET last_error=$2 WHERE id=$1 AND deleted_at IS NOT NULL`,
+      [id, '本地项目清理未完成，请重试删除；Git 仓库和历史用量保留']);
+    throw error;
+  } finally {
+    await client.query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [`assignment:${id}`]);
+    client.release();
+  }
 }
 
 export async function createAssignment(pool, { actorId, body, config, fetchImpl = fetch, run = runFile }) {
@@ -66,6 +136,7 @@ export async function provisionAssignment(pool, { id, config, fetchImpl = fetch,
       FROM project_assignments a JOIN users u ON u.id=a.user_id JOIN delivery_packages p ON p.id=a.package_id
       LEFT JOIN fde_git_accounts g ON g.fde_id=a.user_id LEFT JOIN git_hosts h ON h.id=g.git_host_id WHERE a.id=$1`, [id])).rows[0];
     if (!a) throw new AdminError('not_found', '项目不存在', { httpStatus: 404 });
+    if (a.deleted_at) throw new AdminError('project_deleted', '项目已删除，不能重新下发', { httpStatus: 409 });
     if (a.status === 'ready') return { id, status: 'ready', repo_url: a.repo_url };
     if (a.user_status !== 'active' || !a.remote_login || !a.enabled) throw new AdminError('git_not_ready', '用户的 Gitea 账号尚未就绪', { httpStatus: 409 });
     const root = path.resolve(config.userSpaceRoot);
@@ -149,7 +220,7 @@ export async function provisionAssignment(pool, { id, config, fetchImpl = fetch,
       return { id,status:'ready',repo_url:repoUrl };
     } finally { await fs.rm(staging,{recursive:true,force:true}); }
   } catch(e) {
-    await client.query(`UPDATE project_assignments SET status='failed',last_error=$2,updated_at=now() WHERE id=$1 AND status<>'ready'`,
+    await client.query(`UPDATE project_assignments SET status='failed',last_error=$2,updated_at=now() WHERE id=$1 AND status<>'ready' AND deleted_at IS NULL`,
       [id,e instanceof AdminError?e.message:'下发失败，请重试或联系管理员']);
     throw e;
   } finally { await client.query('SELECT pg_advisory_unlock(hashtextextended($1,0))',[`assignment:${id}`]); client.release(); }

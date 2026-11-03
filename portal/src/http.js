@@ -1211,6 +1211,14 @@ async function handleAdminApi(req, res, ctx, url) {
       return sendJson(res,201,await managedProjects.createAssignment(ctx.pool,{actorId:session.user.id,body,config:ctx.config}));
     }
   }
+  const deleteAssignment = pathname.match(/^\/api\/admin\/assigned-projects\/([a-f0-9-]+)$/i);
+  if (deleteAssignment && req.method === 'DELETE') {
+    requireJson(req);
+    const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+    return sendJson(res,200,await managedProjects.deleteAssignment(ctx.pool, {
+      id:deleteAssignment[1], actorId:session.user.id, confirmation:body.confirmation, config:ctx.config,
+    }));
+  }
   const retryAssignment = pathname.match(/^\/api\/admin\/assigned-projects\/([^/]+)\/retry$/);
   if (retryAssignment && req.method === 'POST') {
     return sendJson(res,200,await managedProjects.provisionAssignment(ctx.pool,{id:retryAssignment[1],config:ctx.config}));
@@ -1474,7 +1482,7 @@ async function handleAdminApi(req, res, ctx, url) {
       requireJson(req);
       const body = await readJsonBody(req, ctx.config.maxBodyBytes);
       const result = await admin.updateUser(ctx.pool, userId, body, { actorId: session.user.id });
-      if (body.status === 'disabled') await modeSettings.revokeChatLlmConfig(ctx.pool, userId, { gateway: ctx.llmGateway });
+      if (body.status === 'disabled') await modeSettings.revokeChatLlmConfig(ctx.pool, userId, { gateway: ctx.llmGateway, preserveHistory: true });
       return sendJson(res, 200, result);
     }
     if (action === null && req.method === 'DELETE') {
@@ -1484,7 +1492,7 @@ async function handleAdminApi(req, res, ctx, url) {
         config: ctx.config,
         log: ctx.log,
       });
-      await modeSettings.revokeChatLlmConfig(ctx.pool, userId, { gateway: ctx.llmGateway });
+      await modeSettings.revokeChatLlmConfig(ctx.pool, userId, { gateway: ctx.llmGateway, preserveHistory: true });
       if (result.offboarding) return sendJson(res, 202, { offboarding: result.offboarding });
       res.writeHead(204);
       res.end();

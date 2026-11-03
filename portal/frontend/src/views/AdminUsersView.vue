@@ -682,6 +682,13 @@ onBeforeUnmount(() => {
                       class="rounded-md border border-black/15 px-2 py-1 text-xs hover:bg-black/5"
                       @click.stop="openEditModal(user)"
                     >{{ t('admin.fde.editAction') }}</button>
+                    <button
+                      v-if="!user.offboarding"
+                      type="button" data-test="delete-member"
+                      class="rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-50"
+                      :disabled="isCurrentUser(user) || busyUserId !== null"
+                      @click.stop="openDeleteModal(user)"
+                    >{{ t('admin.fde.deleteUser') }}</button>
                   </div>
                 </td>
               </tr>

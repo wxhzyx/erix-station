@@ -35,10 +35,14 @@ export function stationIdentity(settings, claims) {
   }
   // Never link a local account merely because its username/email resembles an IdP claim.
   const subject = `${settings.issuer}|${claims.sub}`;
-  const suffix = crypto.createHash('sha256').update(subject).digest('hex').slice(0, 8);
-  const readable = claims.sub.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'user';
+  // INTEVA publishes sAMAccountName as preferred_username (and as sub).
+  const login = claims.preferred_username ?? claims.sub;
+  if (typeof login !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/.test(login)) {
+    throw new OidcError('sso_identity_invalid', 'SSO 未返回有效域账号');
+  }
+  const fdeName = login.toLowerCase().replace(/[_.]/g, '-').replace(/-+$/, '');
   return {
-    subject, login: `sso-${readable}-${suffix}`, fdeName: `sso-${readable}-${suffix}`,
+    subject, login, fdeName,
     displayName: typeof claims.name === 'string' ? claims.name.slice(0, 200) : claims.sub,
     email: claims.email_verified === true && typeof claims.email === 'string' ? claims.email.slice(0, 254) : null,
     role: settings.adminSubjects.includes(claims.sub) ? 'admin' : 'fde',
@@ -65,6 +69,11 @@ export async function provisionSsoIdentity(pool, settings, claims) {
       await enqueueOnboarding(db, { fdeId: user.id, gitHostId: settings.gitHostId,
         llm: { provider_id: settings.providerId, main_model_id: settings.modelId } });
       await audit(db, { actorId: user.id, action: 'auth.oidc_created', target: user.id });
+    } else {
+      // Keep UUID, workspace and external bindings stable. A username collision
+      // fails the transaction; it never links or takes over another identity.
+      user = (await db.query(`UPDATE users SET login=$2, display_name=$3, email=$4
+        WHERE id=$1 RETURNING *`, [user.id, identity.login, identity.displayName, identity.email])).rows[0];
     }
     await db.query('COMMIT');
     return user;

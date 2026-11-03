@@ -94,8 +94,8 @@ export function createDockerClient({ dockerHost, request = defaultRequest } = {}
     baseUrl,
     call,
     ping: () => call('GET', '/_ping'),
-    listContainers: (filters) =>
-      call('GET', filters ? `/containers/json?filters=${encodeURIComponent(JSON.stringify(filters))}` : '/containers/json'),
+    listContainers: (filters, { all = false } = {}) =>
+      call('GET', `/containers/json${filters ? `?filters=${encodeURIComponent(JSON.stringify(filters))}${all ? '&all=1' : ''}` : all ? '?all=1' : ''}`),
     createContainer: (body, name) =>
       call('POST', name ? `/containers/create?name=${encodeURIComponent(name)}` : '/containers/create', body),
     inspectContainer: (idOrName) => call('GET', `/containers/${idOrName}/json`),
@@ -512,7 +512,8 @@ export async function reconcileOnce(pool, config, { docker, log = console } = {}
       await withFdeLock(pool, fdeName, async () => {
         // F10：锁内重新确认仍是 desired（deprovision 可能已 release，旧快照不再重建）。
         const still = await pool.query(
-          `SELECT 1 FROM fde_networks WHERE fde_id = $1 AND state IN ('allocated','active')`,
+          `SELECT 1 FROM fde_networks WHERE fde_id = $1 AND state IN ('allocated','active')
+             AND EXISTS (SELECT 1 FROM users WHERE id = $1 AND status IN ('active','awaiting_credential'))`,
           [row.user_id],
         );
         if (still.rows.length === 0) return;
