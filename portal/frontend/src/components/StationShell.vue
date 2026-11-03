@@ -18,6 +18,7 @@ const name = computed(() => auth.user?.display_name || auth.user?.login || '');
       <div class="rail-brand"><span class="brand-mark" aria-hidden="true">F<span>_</span></span><div><strong>FDE Station</strong><small>INTEVA · WORKSPACE</small></div></div>
       <StationModeSwitch :mode="area" />
       <div class="station-utilities">
+        <router-link to="/projects" class="rail-link"><ElIcon><Grid /></ElIcon><span class="full-label">项目协作</span><span class="compact-label">项目</span></router-link>
         <router-link to="/settings" class="rail-link" :class="{ active: area === 'settings' }" :aria-current="area === 'settings' ? 'page' : undefined"><ElIcon><Setting /></ElIcon><span class="full-label">{{ en ? 'Personal settings' : '个人设置' }}</span><span class="compact-label">{{ en ? 'Settings' : '设置' }}</span></router-link>
         <router-link v-if="auth.user?.role === 'admin'" to="/admin" class="rail-link" :class="{ active: area === 'admin' }" :aria-current="area === 'admin' ? 'page' : undefined"><ElIcon><Grid /></ElIcon><span class="full-label">{{ en ? 'Admin console' : '管理台' }}</span><span class="compact-label">{{ en ? 'Admin' : '管理' }}</span></router-link>
         <div class="rail-profile"><ElAvatar :size="30">{{ name.slice(0, 1).toUpperCase() }}</ElAvatar><div><strong>{{ name }}</strong><small>{{ auth.user?.role === 'admin' ? (en ? 'Administrator' : '管理员') : (en ? 'Workspace member' : '工作空间成员') }}</small></div></div>

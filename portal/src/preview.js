@@ -8,6 +8,7 @@
 import crypto from 'node:crypto';
 import { hashToken } from './auth.js';
 import * as projects from './projects.js';
+import { collaborationPreviewDenied } from './collaboration-preview.js';
 
 /** 确定性派生预览 session token（portal.md §2.7 第 6 步；重放时能重放同一 token）。 */
 export function derivePreviewSessionToken(ticket, signingKey) {
@@ -285,6 +286,7 @@ export async function authorizeForwardAuth(pool, config, { hostname, hostHeader 
   const allocation = r.rows?.[0];
   // #57：给可操作提示，替代 bare not found（书签失效/未分配预览域时用户看不出发生了什么）。
   if (!allocation) return deny(404, 'not_found', 'preview host not found (unassigned preview domain or stale bookmark)');
+  if(await collaborationPreviewDenied(pool,config,allocation))return deny(403,'project_revoked','project access revoked');
   if (allocation.state === 'released') {
     return deny(403, 'allocation_released', 'allocation released', { allocation });
   }
@@ -350,6 +352,7 @@ export async function issuePreviewTicket(pool, config, { allocationId, session, 
   }
 
   const user = session.user;
+  if(await collaborationPreviewDenied(pool,config,allocation))return {error:{status:403,code:'project_revoked'}};
   let visible = false;
   if (allocation.exposure === 'private') {
     visible = user.role === 'admin' || user.id === allocation.fde_id;

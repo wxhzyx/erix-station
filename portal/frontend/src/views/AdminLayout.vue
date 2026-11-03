@@ -13,6 +13,7 @@ const en = computed(() => locale.value === 'en');
 const groups = computed(() => [
   { label: en.value ? 'DELIVERY' : '项目与交付', items: [
     { path: '/admin/delivery', label: en.value ? 'Project delivery' : '项目交付', hint: en.value ? 'Packages and assignments' : '交付包与项目下发' },
+    { path: '/projects', label: en.value ? 'Shared projects' : '共享项目', hint: en.value ? 'Members and pull requests' : '邀请成员与合并请求' },
     { path: '/admin/approvals', label: en.value ? 'Project reviews' : '项目审批', hint: en.value ? 'Review and merge changes' : '审查与合并项目变更' },
   ] },
   { label: en.value ? 'ACCESS & USAGE' : '成员与资源', items: [

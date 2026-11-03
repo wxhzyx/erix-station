@@ -34,6 +34,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/chat/:id?', name: 'chat', component: () => import('./views/ChatView.vue') },
   { path: '/mode-settings', name: 'mode-settings', redirect: '/settings' },
   { path: '/settings', name: 'settings', component: () => import('./views/PersonalSettingsView.vue') },
+  { path: '/projects', name: 'shared-projects', component: () => import('./views/SharedProjectsView.vue') },
   { path: '/', name: 'workbench', component: () => import('./views/WorkbenchView.vue') },
   // issue #55 B1 深链迁入路由层：#/session/<id>（hash 模式下与旧版 URL 形态一致，刷新/分享安全）。
   { path: '/session/:id', name: 'session', component: () => import('./views/WorkbenchView.vue') },

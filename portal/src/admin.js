@@ -457,6 +457,15 @@ export async function deleteUser(pool, { actorId, userId, config, log = console 
     userLogin = target.rows[0].login;
     fdeName = target.rows[0].fde_name;
 
+    if (config?.collaborationConfigFile) {
+      // Retain remote projects and history; the deleting administrator takes ownership.
+      await client.query('UPDATE collaboration_projects SET owner_user_id=$2 WHERE owner_user_id=$1 AND state<>\'deleted\'', [userId,actorId]);
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`member-projects:${userId}`]);
+      await client.query("UPDATE project_memberships SET state='revoking',cleanup_ack=false WHERE user_id=$1 AND state NOT IN ('revoked','declined')",[userId]);
+      await client.query("UPDATE project_assignments SET status='pending' WHERE user_id=$1 AND collaboration_project_id IS NOT NULL AND deleted_at IS NULL",[userId]);
+      await client.query("UPDATE chat_sessions SET status='archived' WHERE user_id=$1 AND cwd IN (SELECT '~/projects/'||name FROM project_assignments WHERE user_id=$1 AND collaboration_project_id IS NOT NULL)",[userId]);
+    }
+
     const resources = await client.query(
       `SELECT (
          EXISTS (SELECT 1 FROM containers WHERE user_id = $1)

@@ -11,6 +11,7 @@ import { createServer } from './http.js';
 import { startMaterializerLoop } from './materializer.js';
 import { startOnboardingLoop } from './onboarding.js';
 import { startOffboardingLoop } from './offboarding.js';
+import { startCollaborationLoop } from './collaboration.js';
 import { startRoutesLoop } from './routes.js';
 import { startReaperLoop, notifySessionEvents } from './internal.js';
 import {
@@ -64,6 +65,7 @@ async function serve() {
   const materializerLoop = startMaterializerLoop(pool, config);
   const onboardingLoop = startOnboardingLoop(pool, config);
   const offboardingLoop = startOffboardingLoop(pool, config);
+  const collaborationLoop = startCollaborationLoop(pool, config);
   const routesLoop = startRoutesLoop(pool, config);
   const provisionerLoop = startProvisionerLoop(pool, config);
   const reaperLoop = startReaperLoop(pool);
@@ -85,6 +87,7 @@ async function serve() {
     materializerLoop.stop();
     onboardingLoop.stop();
     offboardingLoop.stop();
+    collaborationLoop.stop();
     routesLoop.stop();
     provisionerLoop.stop();
     reaperLoop.stop();

@@ -79,6 +79,10 @@ function ownerToken(config, user, host) {
 }
 export function createApprovalRepository({ pool, config, fetchImpl = fetch, executeGit } = {}) {
   async function resolveRepository(user, cwd) {
+    if (config.collaborationConfigFile) {
+      const shared = await pool.query('SELECT id FROM project_assignments WHERE user_id=$1 AND name=$2 AND collaboration_project_id IS NOT NULL',[user.id,cwd.replace(/^~\/projects\//,'')]);
+      if(shared.rows.length) fail('shared_project','共享项目请使用项目协作中的 Gitea 合并请求',409);
+    }
     if (!user?.id || !validateFdeName(user.fde_name).ok) fail('no_workstation', '此用户没有项目工作区', 409);
     const safeCwd = validateSessionCwd(cwd);
     const root = path.resolve(config.userSpaceRoot);

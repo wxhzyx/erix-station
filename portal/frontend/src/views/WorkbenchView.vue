@@ -116,6 +116,8 @@ onMounted(async () => {
   // #332/#334）不在本钩子里，本钩子只改失败的可观测性，不改谁能进来。
   try {
     await store.initWorkspace();
+    if(typeof route.query.cwd==='string' && store.dirs.some(d=>d.cwd===route.query.cwd))await store.selectDir(route.query.cwd);
+    if(typeof route.query.prompt==='string' && !store.inputValue)store.inputValue=route.query.prompt.slice(0,2000);
   } catch (e) {
     store.pushStreamError(t('errors.workspaceLoadFailed', {
       message: toDisplayText(e instanceof Error ? e.message : e),
