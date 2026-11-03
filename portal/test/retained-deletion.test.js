@@ -47,6 +47,12 @@ async function fixture(t) {
 }
 test('project deletion is scoped, confirmed, retryable, and retains attribution without upstream writes',async t=>{
   const f=await fixture(t);await assert.rejects(f.remove('wrong'),{code:'confirmation_required'});
+  const rename=fs.rename.bind(fs),memberRoot=path.dirname(path.dirname(f.target));
+  t.mock.method(fs,'rename',async(from,to)=>{
+    if(!from.startsWith(memberRoot+path.sep)||!to.startsWith(memberRoot+path.sep))throw Object.assign(new Error('XFS project quota boundary'),{code:'EXDEV'});
+    assert.ok(!to.startsWith(path.join(memberRoot,'projects')+path.sep));
+    return rename(from,to);
+  });
   f.setBusy(true);await assert.rejects(f.remove('alpha'),{code:'project_busy'});assert.equal(f.row.deleted_at,undefined);
   f.setBusy(false);await f.remove('alpha');await f.remove('alpha');
   await assert.rejects(fs.stat(f.target),{code:'ENOENT'});assert.equal(await fs.readFile(path.join(f.other,'work.txt'),'utf8'),'retain');
