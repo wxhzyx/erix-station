@@ -2,7 +2,7 @@
 // 约定（照 LoginView.spec / WorkbenchView.spec 先例）：装配真实 i18n 单例，不 mock t()；
 // 每例 localStorage.clear() + setLocale('zh-CN')；导航落地用 vi.waitFor 轮询，不数 tick。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushPromises, mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory } from 'vue-router';
 import App from '../App.vue';
@@ -12,6 +12,8 @@ import type { AuthUser } from '../stores/auth';
 import { i18n, setLocale } from '../i18n';
 import { en } from '../i18n/locales/en';
 import { zhCN } from '../i18n/locales/zh-CN';
+
+enableAutoUnmount(afterEach);
 
 const CJK = /[\u4e00-\u9fff]/;
 
@@ -54,6 +56,7 @@ interface StubOptions {
 function stubFetch(opts: StubOptions) {
   // 可变的 meFlag：POST /api/me/password 成功 ⇒ 服务端清了旗标 ⇒ 后续 /api/me 回答 false。
   let meFlag = opts.meFlag;
+  let meIdentity = RESTRICTED_USER;
   const calls: Array<{ url: string; method: string; body: string | undefined; contentType: string | null }> = [];
   const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -69,18 +72,20 @@ function stubFetch(opts: StubOptions) {
       if (r.status === 200 && opts.clearFlagOnChange !== false) meFlag = false;
       return jsonResponse(r.status, r.body);
     }
-    if (url.startsWith('/api/me')) {
+    if (url === '/api/me') {
       if (meFlag === undefined) {
         return jsonResponse(401, { error: { code: 'unauthorized', message: 'unauthorized' } });
       }
-      // 身份恒定是 alice（受限与否只改旗标）：否则断言「会话保留」会被桩换人，假红。
-      return jsonResponse(200, { user: { ...RESTRICTED_USER, must_change_password: meFlag } });
+      // 与最近一次成功登录保持同一身份；改密只清旗标，不更换用户。
+      return jsonResponse(200, { user: { ...meIdentity, must_change_password: meFlag } });
     }
     if (url.startsWith('/api/auth/login/totp')) {
       const body: Record<string, unknown> = {
         user: { ...(opts.loginFlag === true ? RESTRICTED_USER : NORMAL_USER) },
       };
       if (opts.loginFlag !== undefined) body.password_change_required = opts.loginFlag;
+      meIdentity = body.user as AuthUser;
+      meFlag = meIdentity.must_change_password;
       return jsonResponse(200, body);
     }
     if (url.startsWith('/api/auth/login')) {
@@ -90,6 +95,8 @@ function stubFetch(opts: StubOptions) {
       };
       // 后端口径：只有**发会话**的分支带这个键（undefined ⇒ 不带，模拟升级前的旧后端）。
       if (opts.loginFlag !== undefined) body.password_change_required = opts.loginFlag;
+      meIdentity = body.user as AuthUser;
+      meFlag = meIdentity.must_change_password;
       return jsonResponse(200, body);
     }
     if (url.startsWith('/api/dirs')) return jsonResponse(200, { dirs: [] });
@@ -210,15 +217,18 @@ describe('#255 强制改密屏 · 闸门（挂 App 验「工作台没挂载」�
 
   it('登录返回 false ⇒ 一切照旧（正常进工作台，没有改密屏）', async () => {
     stubFetch({ loginFlag: false });
-    const { wrapper, router } = await mountApp('/login');
+    const { wrapper, router, auth } = await mountApp('/login');
     await wrapper.find('#loginName').setValue('bob');
     await wrapper.find('#loginPass').setValue('pw');
     await wrapper.find('form').trigger('submit.prevent');
     await tick();
 
     expect(wrapper.find(FORCE_SCREEN).exists()).toBe(false);
-    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
+    // 首次 Workbench 懒加载在 CI 实测需 1.75s；等导航落地，不用默认 1s 误判登录失败。
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/'), { timeout: 4000 });
     await vi.waitFor(() => expect(wrapper.find(WORKBENCH_MARKER).exists()).toBe(true));
+    await auth.refreshMe();
+    expect(auth.user?.login).toBe('bob');
   });
 
   it('刷新（深链 #/session/<id> + /api/me 回答 true）⇒ 直接落在改密屏，会话视图没挂载', async () => {
