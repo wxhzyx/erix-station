@@ -1,0 +1,32 @@
+name: FDE Station 主分支自动发布
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    if: gitea.ref == 'refs/heads/main'
+    runs-on: fde-station-release
+    timeout-minutes: 90
+    steps:
+      - name: 测试、编译与发布
+        env:
+          STATION_SHA: ${{ gitea.sha }}
+          CI_REPOSITORY_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$STATION_SHA" =~ ^[0-9a-f]{40}$ ]]
+          workspace=$(mktemp -d /var/lib/fde-ci/work/release.XXXXXXXX)
+          cd "$workspace"
+          git init -q
+          git remote add origin http://10.13.16.21:3300/SDA_IT/erix-station.git
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader
+          export GIT_CONFIG_VALUE_0="Authorization: Basic $(printf 'x-access-token:%s' "$CI_REPOSITORY_TOKEN" | base64 -w0)"
+          tip=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [[ "$tip" != "$STATION_SHA" ]]; then echo 'A newer main commit exists; obsolete release skipped'; exit 0; fi
+          git fetch --no-tags --depth=1 origin "$STATION_SHA"
+          git checkout --detach FETCH_HEAD
+          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 CI_REPOSITORY_TOKEN
+          bash deploy/ci/release.sh "$STATION_SHA"

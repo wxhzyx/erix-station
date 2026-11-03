@@ -46,6 +46,9 @@ export const zhCN = {
   // 登录页（views/LoginView.vue）——覆盖该视图全部用户可见文案。
   // 注意：登录失败/校验失败的提示来自服务端 error.message（auth store 原样透传），不在前端翻译范围内。
   login: {
+    sso: '使用 INTEVA SSO 登录',
+    providerError: '无法加载登录方式，请刷新重试。',
+    ssoError: 'SSO 登录失败或请求已过期，请重试；持续失败请联系管理员。',
     title: 'FDE Station 登录',
     loginName: '登录名',
     password: '口令',
@@ -590,6 +593,7 @@ export const zhCN = {
     collapse: '收起',
     tabs: {
       approvals: '项目审批',
+      delivery: '项目下发与配额',
       label: '管理台栏目',
       users: '用户管理',
       llm: 'LLM 管理',

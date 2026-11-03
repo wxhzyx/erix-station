@@ -42,6 +42,7 @@ export const routes: RouteRecordRaw[] = [
     meta: { requiresRole: 'admin' },
     children: [
       { path: 'approvals', name: 'admin-approvals', component: () => import('./views/AdminApprovalsView.vue'), meta: { requiresRole: 'admin' } },
+      { path: 'delivery', name: 'admin-delivery', component: () => import('./views/AdminDeliveryView.vue'), meta: { requiresRole: 'admin' } },
       { path: '', redirect: { name: 'admin-users' }, meta: { requiresRole: 'admin' } },
       {
         path: 'users',

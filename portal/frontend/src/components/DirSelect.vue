@@ -82,7 +82,7 @@ function onChange(e: Event) {
            服务端仍有写闸（**2026-10-21 更正**：原先这里写「403」，与代码不符）：无 fde_name 的账号
            POST /api/sessions 返 400 `validation_failed` + `details.field='fde_name'`
            （portal/src/sessions.js:214-222，portal/test/sessions-cwd.test.js:99 钉着）。 -->
-      <option value="__new__">{{ t('sidebar.newDirOption') }}</option>
+      <option v-if="store.canCreateProject" value="__new__">{{ t('sidebar.newDirOption') }}</option>
     </select>
     <button ref="actionButton" type="button" class="h-8 w-7 shrink-0 rounded-lg text-sm hover:bg-black/5" :aria-label="locale === 'en' ? 'Project actions' : '项目操作'" aria-haspopup="menu" :aria-expanded="menu" :disabled="!store.dirCwd" @click="menu ? closeMenu() : openMenu()">⋯</button>
     <div v-if="menu" ref="menuEl" role="menu" class="absolute left-0 top-full z-40 mt-2 min-w-44 rounded-xl border border-black/10 bg-white p-1.5 shadow-lg" @keydown="menuKey">

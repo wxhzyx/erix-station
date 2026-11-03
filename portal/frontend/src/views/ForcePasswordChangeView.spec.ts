@@ -108,6 +108,8 @@ async function mountApp(initialPath: string) {
   router.push(initialPath);
   await router.isReady();
   const wrapper = mount(App, { global: { plugins: [pinia, router, i18n] } });
+  // LoginView loads the permitted sign-in methods before rendering a password form.
+  await flushPromises();
   return { wrapper, router, auth: useAuthStore() };
 }
 

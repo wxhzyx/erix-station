@@ -292,8 +292,11 @@ export function generateLlmTraefikConfig({ entryPoint, llmHost, llmGatewayUrl, l
   lines.push('  services:');
   lines.push('    llm-gateway:');
   lines.push('      loadBalancer:');
+  // External gateways route by their own hostname, not the station's ingress host.
+  lines.push('        passHostHeader: false');
   lines.push('        servers:');
   lines.push(`          - url: ${yq(llmGatewayUrl)}`);
+  lines.push('            preservePath: true');
   // 流式必需：保持较短 flush interval，避免 token 流被缓冲成整段。
   lines.push('        responseForwarding:');
   lines.push('          flushInterval: 100ms');

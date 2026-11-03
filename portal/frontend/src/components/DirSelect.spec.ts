@@ -19,6 +19,7 @@ beforeEach(() => {
 
 function setup(dirs: { name: string; cwd: string; running_count: number; queued_count: number }[]) {
   const store = useWorkbenchStore();
+  store.canCreateProject = true;
   store.dirs = dirs;
   store.dirCwd = dirs[0]?.cwd ?? null;
   const wrapper = mount(DirSelect, { props: {}, global: { plugins: [i18n] } });
@@ -26,6 +27,12 @@ function setup(dirs: { name: string; cwd: string; running_count: number; queued_
 }
 
 describe('DirSelect（目录下拉）', () => {
+  it('管理员下发模式隐藏用户新建目录入口', async () => {
+    const { store, wrapper } = setup([]);
+    store.canCreateProject = false;
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('option[value="__new__"]').exists()).toBe(false);
+  });
   it('选项 = 目录名 + ●N 徽标（N=running+queued；0 不显示徽标）+ 末项「＋ 新建目录」', () => {
     const { wrapper } = setup([
       { name: 'llm-smoke', cwd: '~/projects/llm-smoke', running_count: 1, queued_count: 1 },

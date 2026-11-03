@@ -44,6 +44,17 @@ function fixture() {
 }
 const selection = { provider_id: 'provider', main_model_id: 'model-1' };
 
+test('chat key joins the same station identity and team used by the work quota', async () => {
+  const f = fixture();
+  f.gateway.teamId = 'fde-team';
+  f.gateway.ensureStationMember = async ({id}) => `fde-${id}`;
+  await setModeSettings(f.pool,'alice','chat',selection,{gateway:f.gateway});
+  const generated = f.calls.find(([type])=>type==='generate')[1];
+  assert.equal(generated.user_id,'fde-alice');
+  assert.equal(generated.metadata.fde_id,'alice');
+  assert.equal(generated.metadata.mode,'chat');
+});
+
 test('catalog allow-list strips arbitrary secrets and API URLs', async () => {
   const f = fixture();
   const catalog = await modeCatalog(f.gateway);

@@ -21,6 +21,7 @@ import { projectTranscriptForDisplay } from 'erix-agent';
 import { fetchUserTextTurns } from './session-text.js';
 import { appendUserInputTurn } from './transcript-store.js';
 import { allocSeq } from './seq.js';
+import { assertAssigned } from './managed-projects.js';
 // #322：本文件**不再直接调** `chatCompletion`（手工改名走 `./title-llm.js` 的唯一生成入口）；
 // 下面三个「一次对话请求」的通用件仍在此重新导出，只为既有调用方与文档口径不受影响。
 import { chatCompletionsUrl, extractAssistantText, redactSecret } from './llm-chat.js';
@@ -195,6 +196,7 @@ export async function listSessions(pool, { userId, projectId, cwd, cursor, limit
  */
 export async function createSession(pool, { userId, projectId, title, model, config }) {
   const cwd = validateSessionCwd(projectId);
+  if (config?.managedProjects) await assertAssigned(pool, userId, cwd);
   const name = CWD_RE.exec(cwd)[1];
   if (title !== undefined && (typeof title !== 'string' || title.length > 200)) {
     throw new SessionError('validation_failed', 'title 必须为 ≤200 字符的字符串', { details: { field: 'title' } });

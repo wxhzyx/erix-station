@@ -21,6 +21,7 @@ import QueuedInputsBar from '../components/QueuedInputsBar.vue';
 import SessionPickerModal from '../components/SessionPickerModal.vue';
 import LocaleSwitch from '../components/LocaleSwitch.vue';
 import StationModeSwitch from '../components/StationModeSwitch.vue';
+import TokenQuotaPanel from '../components/TokenQuotaPanel.vue';
 // issue #359（决策 §7 D9）P0b：顶栏「收工灯」——只回答“你的活儿被 git 保护住了吗”，平台零 git 写。
 import GitLightBadge from '../components/GitLightBadge.vue';
 import { useGitLight } from '../composables/useGitLight';
@@ -266,6 +267,7 @@ function jumpToLatest() {
       <span class="flex-1 text-black/50 text-sm">{{ who }}</span>
       <router-link v-if="auth.user?.role === 'admin'" to="/admin" class="text-sm underline">{{ t('common.adminConsole') }}</router-link>
       <LocaleSwitch />
+      <TokenQuotaPanel />
       <button
         class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5"
         @click="onLogout"

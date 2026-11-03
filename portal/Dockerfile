@@ -48,6 +48,11 @@ COPY docs/data/ docs/data/
 # 由 `cli.js migrate` 或 MIGRATE_ON_START=1 以 station_platform 应用到 head（deploy-contract §3.1/§3.3）。
 COPY deploy/migrations/ deploy/migrations/
 
+ARG STATION_REVISION=unknown
+ARG STATION_BUILD_DATE=unknown
+RUN node -e 'const fs=require("fs");fs.writeFileSync("portal/static/version.json",JSON.stringify({version:require("./package.json").version,revision:process.env.STATION_REVISION,built_at:process.env.STATION_BUILD_DATE})+"\n")'
+LABEL org.opencontainers.image.revision="${STATION_REVISION}"
+
 # materializer 以 root 写平台文件（root:root 0644/0444）、chown 工作区目录（1000:1000）。
 USER root
 

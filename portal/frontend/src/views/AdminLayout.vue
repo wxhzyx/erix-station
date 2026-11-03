@@ -19,6 +19,7 @@ const who = computed(() => {
 
 const tabs = [
   { name: 'admin-approvals', label: 'admin.tabs.approvals' },
+  { name: 'admin-delivery', label: 'admin.tabs.delivery' },
   { name: 'admin-users', label: 'admin.tabs.users' },
   { name: 'admin-llm', label: 'admin.tabs.llm' },
   { name: 'admin-repos', label: 'admin.tabs.repos' },

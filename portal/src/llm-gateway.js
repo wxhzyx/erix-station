@@ -52,6 +52,7 @@ export function createLlmGatewayClient({
   masterKey,
   fetchImpl = fetch,
   timeoutMs = 10_000,
+  teamId = '',
 } = {}) {
   let baseUrl;
   try {
@@ -129,21 +130,54 @@ export function createLlmGatewayClient({
   const post = (path, body) => request('POST', path, { body });
   const patch = (path, body) => request('PATCH', path, { body });
   const namePath = (name) => `/credentials/${encodeURIComponent(name)}`;
+  async function listModels() {
+    const payload = await request('GET', '/model/info');
+    if (!teamId) return payload;
+    const team = await request('GET', '/team/info', { query: { team_id: teamId } });
+    const allowed = new Set(team?.team_info?.models ?? []);
+    return { ...payload, data: (payload?.data ?? []).filter(model => allowed.has(model.model_name)) };
+  }
+  async function listCredentials() {
+    const payload = await request('GET', '/credentials');
+    if (!teamId) return payload;
+    const models = (await listModels()).data;
+    const names = new Set(models.map(model => model.litellm_params?.litellm_credential_name
+      ?? model.model_info?.metadata?.credential_name).filter(Boolean));
+    const rows = Array.isArray(payload) ? payload : payload?.credentials ?? payload?.data ?? [];
+    return { credentials: rows.filter(row => names.has(row.credential_name)) };
+  }
+  async function ensureStationMember({ id, login }) {
+    if (!teamId) return null;
+    const userId = `fde-${id}`;
+    let existing;
+    try { existing = await request('GET','/user/info',{query:{user_id:userId}}); }
+    catch(e) { if(e.status!==404 && !/not found|does not exist/i.test(e.message)) throw e; }
+    if (!existing?.user_info?.user_id) {
+      await post('/user/new',{user_id:userId,user_email:`${login}@station.invalid`,user_alias:login,auto_create_key:false});
+    }
+    const team = await request('GET','/team/info',{query:{team_id:teamId}});
+    if (!(team?.team_info?.members_with_roles??[]).some(m=>m.user_id===userId)) {
+      await post('/team/member_add',{team_id:teamId,member:{user_id:userId,role:'user'}});
+    }
+    return userId;
+  }
   return Object.freeze({
+    teamId,
+    ensureStationMember,
     createUser: (body) => post('/user/new', body),
-    generateKey: (body) => post('/key/generate', body),
+    generateKey: (body) => post('/key/generate', { ...body, ...(teamId ? {team_id:teamId} : {}) }),
     updateKey: (body) => post('/key/update', body),
     deleteKey: (body) => post('/key/delete', body),
     blockKey: (body) => post('/key/block', body),
     unblockKey: (body) => post('/key/unblock', body),
     keyInfo: (key) => request('GET', '/key/info', { query: { key } }),
-    listModels: () => request('GET', '/model/info'),
+    listModels,
     createModel: (body) => post('/model/new', body),
     updateModel: ({ model_id, ...body }) => patch(`/model/${encodeURIComponent(model_id)}/update`, body),
     deleteModel: (id) => post('/model/delete', { id }),
     blockModel: (modelId) => post('/model/block', { model_id: modelId }),
     unblockModel: (modelId) => post('/model/unblock', { model_id: modelId }),
-    listCredentials: () => request('GET', '/credentials'),
+    listCredentials,
     createCredential: (body) => post('/credentials', body),
     updateCredential: (name, body) => patch(namePath(name), body),
     deleteCredential: (name) => request('DELETE', namePath(name)),

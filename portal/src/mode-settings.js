@@ -78,12 +78,17 @@ export async function setModeSettings(pool, userId, mode, input, { gateway } = {
       return echo(old);
     }
     let key = old?.api_key;
+    const gatewayUserId = gateway.teamId
+      ? await gateway.ensureStationMember({id:userId,login:user.fde_name??`user-${userId}`}) : null;
     if (key) {
-      await gateway.updateKey({ key, models: [model.model_name] });
+      await gateway.updateKey({ key, models: [model.model_name], ...(gatewayUserId ? {
+        user_id:gatewayUserId,team_id:gateway.teamId,metadata:{fde_id:userId,mode:'chat'},
+      } : {}) });
       changedExisting = true;
     } else {
       const result = await gateway.generateKey({ models: [model.model_name],
-        key_alias: `station-chat-${randomUUID()}`, metadata: { station_user_id: userId, mode: 'chat' } });
+        key_alias: `station-chat-${randomUUID()}`, ...(gatewayUserId?{user_id:gatewayUserId}:{}),
+        metadata: { station_user_id: userId, fde_id:userId, mode: 'chat' } });
       if (typeof result?.key !== 'string' || !result.key) throw unavailable();
       key = generated = result.key;
     }

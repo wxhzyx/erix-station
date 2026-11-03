@@ -31,6 +31,9 @@ export const en = {
     en: 'English',
   },
   login: {
+    sso: 'Sign in with INTEVA SSO',
+    providerError: 'Unable to load sign-in methods. Please refresh and try again.',
+    ssoError: 'SSO sign-in failed or expired. Please retry or contact an administrator.',
     title: 'Sign in to FDE Station',
     loginName: 'Login name',
     password: 'Password',
@@ -557,6 +560,7 @@ export const en = {
     collapse: 'Collapse',
     tabs: {
       approvals: 'Approvals',
+      delivery: 'Projects & quotas',
       label: 'Admin sections',
       users: 'User management',
       llm: 'LLM management',

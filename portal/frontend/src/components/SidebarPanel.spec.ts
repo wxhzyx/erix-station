@@ -36,6 +36,7 @@ async function mountPanel(
   attrs: Record<string, unknown> = {},
 ) {
   const store = useWorkbenchStore();
+  store.canCreateProject = true;
   store.dirs = opts.dirs ?? [];
   store.dirCwd = opts.dirs?.[0]?.cwd ?? null;
   store.sessions = opts.sessions ?? [];

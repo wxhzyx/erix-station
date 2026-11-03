@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { URL } from 'node:url';
 import * as auth from './auth.js';
+import { createOidcLogin } from './oidc.js';
 import * as migrate from './migrate.js';
 import * as projects from './projects.js';
 import * as sessions from './sessions.js';
@@ -24,6 +25,9 @@ import * as projectApprovals from './project-approvals.js';
 import { createApprovalRepository, ApprovalRepositoryError } from './approval-repository.js';
 import { ApprovalMergeError } from './approval-git-merge.js';
 import * as modeSettings from './mode-settings.js';
+import * as managedProjects from './managed-projects.js';
+import * as tokenQuota from './token-quota.js';
+import { MAX_PACKAGE_BYTES } from './delivery-package.js';
 import { createLlmGatewayClient, LlmGatewayError } from './llm-gateway.js';
 import * as admin from './admin.js';
 import * as dirs from './dirs.js';
@@ -578,12 +582,14 @@ export function createServer({ pool, config, log = console, docker = null, llmGa
     llmGateway: llmGateway ?? createLlmGatewayClient({
       adminUrl: config.llmGatewayAdminUrl ?? 'http://station-litellm:4000',
       masterKey: config.llmGatewayMasterKey ?? '',
+      teamId: config.llmGatewayTeamId ?? '',
     }),
   };
   // issue #38 Phase B2 admin UI：portal serve 进程本就有 config.dockerHost（cli.js serve 的
   // startProvisionerLoop 也用它自建 client——调查结论见 Phase B2 报告），故 provision 端点**可实现**：
   // 按需懒建并缓存 docker client（不持有连接，仅 HTTP 工厂）。测试可经 createServer({ docker }) 注入。
   let lazyDocker = null;
+  ctx.oidcLogin = config.oidc ? createOidcLogin({ pool, config, gateway:ctx.llmGateway }) : null;
   ctx.adminDocker = () => {
     if (ctx.docker) return ctx.docker;
     if (!lazyDocker) lazyDocker = createDockerClient({ dockerHost: ctx.config.dockerHost });
@@ -782,10 +788,42 @@ async function routeApi(req, res, ctx, url) {
   }
 
   if (req.method === 'POST' && pathname === '/api/auth/login') {
+    if (config.oidcOnly) throw new HttpError(403, 'password_login_disabled', '请使用 INTEVA SSO 登录');
     return handleLoginStep1(req, res, ctx);
   }
 
+  if (req.method === 'GET' && pathname === '/api/auth/providers') {
+    return sendJson(res, 200, { sso: Boolean(ctx.oidcLogin), password: !config.oidcOnly });
+  }
+  if (req.method === 'GET' && ['/api/auth/sso', '/api/auth/sso/callback'].includes(pathname)) {
+    if (!ctx.oidcLogin) throw new HttpError(404, 'not_found', 'SSO is not configured');
+    const stateCookie = '__Host-fde_oidc';
+    try {
+      if (pathname === '/api/auth/sso') {
+        const started = await ctx.oidcLogin.start();
+        res.writeHead(302, { Location: started.url, 'Cache-Control': 'no-store',
+          'Set-Cookie': `${stateCookie}=${started.browserToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=300` });
+      } else {
+        const { session } = await ctx.oidcLogin.callback(url.searchParams, getCookie(req, stateCookie), {
+          ip: req.socket.remoteAddress, userAgent: req.headers['user-agent'],
+        });
+        res.writeHead(302, { Location: '/#/', 'Cache-Control': 'no-store', 'Set-Cookie': [
+          sessionCookieHeader(config.cookie, session.token),
+          `${stateCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+        ] });
+      }
+    } catch (error) {
+      // Provider errors can contain tokens or authorization codes. Never log their text.
+      ctx.log.warn?.('[oidc] login failed', { code: error.code || 'sso_failed' });
+      res.writeHead(302, { Location: '/#/login?sso_error=1', 'Cache-Control': 'no-store',
+        'Set-Cookie': `${stateCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0` });
+    }
+    res.end();
+    return;
+  }
+
   if (req.method === 'POST' && pathname === '/api/auth/login/totp') {
+    if (config.oidcOnly) throw new HttpError(403, 'password_login_disabled', '请使用 INTEVA SSO 登录');
     return handleLoginTotp(req, res, ctx);
   }
 
@@ -900,6 +938,17 @@ async function routeApi(req, res, ctx, url) {
   if (pathname === '/api/me/password') {
     if (req.method === 'POST') return handleChangeMyPassword(req, res, ctx);
     throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+  }
+
+  if (pathname === '/api/me/token-quota') {
+    const session = await requireSession(req,ctx);
+    if(req.method === 'GET') return sendJson(res,200,{
+      ...await tokenQuota.quotaRequest(ctx.config,session.user.id),requests:await tokenQuota.listQuotaRequests(ctx.pool,session.user.id),
+    });
+    if(req.method === 'POST') {
+      requireJson(req);const body=await readJsonBody(req,ctx.config.maxBodyBytes);
+      return sendJson(res,201,await tokenQuota.submitQuotaRequest(ctx.pool,ctx.config,{userId:session.user.id,body}));
+    }
   }
   if (pathname === '/api/me/git-credential') {
     const session = await requireSession(req, ctx);
@@ -1101,6 +1150,53 @@ async function handleAdminApi(req, res, ctx, url) {
     }));
     const handler = action === 'approve' ? projectApprovals.approveProjectApproval : projectApprovals.mergeProjectApproval;
     return sendJson(res, 200, await handler(ctx.pool, session.user.id, approvalId, body, { repository }));
+  }
+
+  if(pathname === '/api/admin/token-quota-requests' && req.method === 'GET') {
+    return sendJson(res,200,{requests:await tokenQuota.listQuotaRequests(ctx.pool)});
+  }
+  const quotaUser=pathname.match(/^\/api\/admin\/users\/([^/]+)\/token-quota$/);
+  if(quotaUser) {
+    if(req.method === 'GET') return sendJson(res,200,await tokenQuota.quotaRequest(ctx.config,quotaUser[1]));
+    if(req.method === 'PUT') {
+      requireJson(req);const body=await readJsonBody(req,ctx.config.maxBodyBytes);
+      return sendJson(res,200,await tokenQuota.setQuota(ctx.pool,ctx.config,{userId:quotaUser[1],actorId:session.user.id,dailyLimit:body.daily_limit}));
+    }
+  }
+  const quotaReview=pathname.match(/^\/api\/admin\/token-quota-requests\/([0-9a-f-]{36})\/review$/i);
+  if(quotaReview && req.method === 'POST') {
+    requireJson(req);const body=await readJsonBody(req,ctx.config.maxBodyBytes);
+    if(typeof body.approve !== 'boolean') throw new HttpError(400,'validation_failed','请选择批准或拒绝');
+    const request=(await ctx.pool.query('SELECT user_id FROM token_quota_requests WHERE id=$1',[quotaReview[1]])).rows[0];
+    if(!request) throw new HttpError(404,'not_found','申请不存在');
+    return sendJson(res,200,await tokenQuota.setQuota(ctx.pool,ctx.config,{userId:request.user_id,actorId:session.user.id,requestId:quotaReview[1],approve:body.approve}));
+  }
+
+  if (pathname === '/api/admin/delivery-packages' && req.method === 'GET') {
+    return sendJson(res, 200, { packages: await managedProjects.listPackages(ctx.pool) });
+  }
+  if (pathname === '/api/admin/delivery-packages' && req.method === 'POST') {
+    if (req.headers['content-type'] !== 'application/zip') throw new HttpError(415,'zip_required','请选择 ZIP 开发交付包');
+    const chunks = []; let size = 0;
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > MAX_PACKAGE_BYTES) throw new HttpError(413,'package_too_large','交付包不得超过 50 MB');
+      chunks.push(chunk);
+    }
+    return sendJson(res,201,await managedProjects.uploadPackage(ctx.pool, {
+      actorId:session.user.id,name:url.searchParams.get('name'),filename:url.searchParams.get('filename'),archive:Buffer.concat(chunks),
+    }));
+  }
+  if (pathname === '/api/admin/assigned-projects') {
+    if (req.method === 'GET') return sendJson(res,200,{projects:await managedProjects.listAssignments(ctx.pool)});
+    if (req.method === 'POST') {
+      requireJson(req); const body = await readJsonBody(req,ctx.config.maxBodyBytes);
+      return sendJson(res,201,await managedProjects.createAssignment(ctx.pool,{actorId:session.user.id,body,config:ctx.config}));
+    }
+  }
+  const retryAssignment = pathname.match(/^\/api\/admin\/assigned-projects\/([^/]+)\/retry$/);
+  if (retryAssignment && req.method === 'POST') {
+    return sendJson(res,200,await managedProjects.provisionAssignment(ctx.pool,{id:retryAssignment[1],config:ctx.config}));
   }
 
   const adminGitCredentialMatch = pathname.match(/^\/api\/admin\/fdes\/([^/]+)\/git-credential$/);
@@ -2945,12 +3041,18 @@ async function handleChangeMyPassword(req, res, ctx) {
 
 async function handleListDirs(req, res, ctx) {
   const session = await requireSession(req, ctx);
-  return sendJson(res, 200, await dirs.listDirs(ctx.pool, {
-    userId: session.user.id,
-    userSpaceRoot: ctx.config.userSpaceRoot,
-    fdeName: session.user.fde_name,
-    log: ctx.log,
-  }));
+  const result = await dirs.listDirs(ctx.pool, {
+    userId: session.user.id, userSpaceRoot: ctx.config.userSpaceRoot,
+    fdeName: session.user.fde_name, log: ctx.log,
+  });
+  if (ctx.config.managedProjects) {
+    const projects = await managedProjects.listAssignments(ctx.pool,session.user.id);
+    const assigned = new Map(projects.filter(p => p.status === 'ready').map(p => [p.name, p]));
+    return sendJson(res,200,{can_create:false,dirs:result.dirs.filter(d => assigned.has(d.name)).map(d => ({
+      ...d, repo_url:assigned.get(d.name).repo_url, package_name:assigned.get(d.name).package_name,
+    }))});
+  }
+  return sendJson(res, 200, result);
 }
 
 /** 目录树懒展开（单层只读）：?cwd=<相对cwd>&path=<相对路径>（path 默认 '.'）。 */

@@ -295,6 +295,7 @@ function positiveIntOrNull(v: unknown): number | null {
 export const useWorkbenchStore = defineStore('workbench', () => {
   // ---- S 状态平移 ----
   const dirs = ref<DirInfo[]>([]);
+  const canCreateProject = ref(false);
   const dirCwd = ref<string | null>(null); // 选中目录（页面级状态）
   const sessions = ref<Session[]>([]);
   const sessionId = ref<string | null>(null);
@@ -808,9 +809,10 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   async function loadDirs() {
     // issue #428：与 loadSessions 同口径的迟到响应守卫（复位会撞这个序号）。
     const reqSeq = ++dirsReqSeq.value;
-    const data = await api<{ dirs?: DirInfo[] }>('/api/dirs');
+    const data = await api<{ dirs?: DirInfo[]; can_create?: boolean }>('/api/dirs');
     if (reqSeq !== dirsReqSeq.value) return; // 过期响应：这轮目录列表已被更新的请求（或换账号复位）接管
     dirs.value = data.dirs ?? [];
+    canCreateProject.value = data.can_create !== false;
   }
 
   /**
@@ -1228,6 +1230,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     foldedOriginals.value = {};
     // ④ 目录与会话列表
     dirs.value = [];
+    canCreateProject.value = false;
     dirCwd.value = null;
     sessions.value = [];
     sessionId.value = null;
@@ -1610,7 +1613,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
 
   return {
     // state
-    dirs, dirCwd, sessions, sessionId, noDir,
+    dirs, canCreateProject, dirCwd, sessions, sessionId, noDir,
     // issue #428：`sessionMessageCount` 原本只内部用（#197 消息数口径），导出只为给换账号复位钉用例
     sessionMessageCount,
     entries, renderedIds, inputValue, pendingAttachments, messageSubmitting, creatingSession,

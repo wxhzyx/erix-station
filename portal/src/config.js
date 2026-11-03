@@ -4,6 +4,7 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { oidcSettings } from './oidc.js';
 
 const DEFAULT_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 天，portal.md §2.5
 
@@ -198,6 +199,8 @@ export function loadConfig(env = process.env) {
     maxLoginLength: intEnv(env, 'MAX_LOGIN_LENGTH', 128),
     maxPasswordLength: intEnv(env, 'MAX_PASSWORD_LENGTH', 256),
     baseDomain: env.BASE_DOMAIN || 'localhost',
+    oidc: oidcSettings(env),
+    oidcOnly: env.OIDC_ONLY === '1',
     migrateOnStart: env.MIGRATE_ON_START !== '0',
     staticDir: env.STATIC_DIR || defaultStaticDir(),
     // ---- WP2a：用户空间物化 + 路由 reconciler 配置 ----
@@ -248,6 +251,9 @@ export function loadConfig(env = process.env) {
     // FDE 容器镜像/命令（开发期 traefik/whoami 站台；生产自构建 runner 镜像，env §10/deploy-contract §6.2）。
     fdeImage,
     fdeDevMode,
+    managedProjects: env.MANAGED_PROJECTS === '1',
+    quotaAdminKey: env.FDE_QUOTA_ADMIN_KEY || '',
+    llmGatewayTeamId: env.LLM_GATEWAY_TEAM_ID || '',
     // F5：开发期 whoami 等镜像不满足「root 启动→drop 1001」契约时的 --user 兜底（⚠️ dev 偏差）；生产留空由镜像 entrypoint 降权。
     fdeDevUser: env.FDE_DEV_USER || null,
     fdeCmd: parseJsonStringArray(env.FDE_CMD, ['-port', '4000']),

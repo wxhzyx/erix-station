@@ -7,6 +7,7 @@ import { bytesBase64, extractDocument, isDocument, readBase64, rejectLegacyDocum
 import { useAuthStore } from '../stores/auth';
 import StationModeSwitch from '../components/StationModeSwitch.vue';
 import LocaleSwitch from '../components/LocaleSwitch.vue';
+import TokenQuotaPanel from '../components/TokenQuotaPanel.vue';
 interface Conversation { id: string; title: string }
 interface Attachment { name: string; mime_type: string; data_base64: string; warnings?: string[] }
 interface Message { id: string; role: string; content: string; attachments?: { name: string; size: number }[] }
@@ -101,7 +102,7 @@ onUnmounted(reset);
       <StationModeSwitch mode="chat" /><h1 class="station-wordmark">FDE Station</h1><span class="flex-1"></span>
       <router-link to="/mode-settings" class="text-sm underline">{{ en ? 'API settings' : 'API 设置' }}</router-link>
       <router-link v-if="auth.user?.role === 'admin'" to="/admin" class="text-sm underline">{{ t('common.adminConsole') }}</router-link>
-      <LocaleSwitch /><button class="text-sm underline" @click="logout">{{ t('common.logout') }}</button>
+      <TokenQuotaPanel /><LocaleSwitch /><button class="text-sm underline" @click="logout">{{ t('common.logout') }}</button>
     </header>
     <main class="chat-main mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 overflow-hidden px-4 py-5">
       <div class="flex gap-3">

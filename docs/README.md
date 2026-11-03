@@ -11,6 +11,9 @@
 
 | 文档 | 内容 | 状态 |
 |---|---|---|
+| [`ops/inteva-sso.md`](ops/inteva-sso.md) | INTEVA SSO 登录、Gitea 自动开户与统一 LiteLLM 个人 key | 实现与部署验证 |
+| [`design/managed-delivery-quota.md`](design/managed-delivery-quota.md) | 管理员交付包下发及个人每日 Token 配额 | INTEVA 扩展 |
+| [`ops/gitea-release.md`](ops/gitea-release.md) | 私有 Gitea 主分支自动测试、构建、发布与回退 | 内部发布 |
 | [`../README.md`](../README.md) | 项目定位、三条不变式 | ✅ |
 | [`../AGENTS.md`](../AGENTS.md) | 项目特有规则（边界/结构/端口/流程/已定决策） | ✅ |
 | [`design/fde-platform.md`](design/fde-platform.md) | **主规格**：拓扑、网络与隔离、访问控制、账号生命周期、端口分配、数据模型、事件流、LLM 接入、容器模板、部署、分期、决策 D1~D10 | ✅ |

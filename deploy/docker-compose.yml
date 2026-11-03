@@ -152,6 +152,18 @@ services:
       # portal 经自研 admission proxy 访问 Docker API（不直挂 /var/run/docker.sock）
       DOCKER_HOST: tcp://station-docker-proxy:2375
       COOKIE_PROFILE: ${COOKIE_PROFILE:-dev-http}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_ONLY: ${OIDC_ONLY:-0}
+      MANAGED_PROJECTS: ${MANAGED_PROJECTS:-0}
+      FDE_QUOTA_ADMIN_KEY: ${FDE_QUOTA_ADMIN_KEY:-}
+      LLM_GATEWAY_TEAM_ID: ${LLM_GATEWAY_TEAM_ID:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_GIT_HOST_ID: ${OIDC_GIT_HOST_ID:-}
+      OIDC_LLM_PROVIDER_ID: ${OIDC_LLM_PROVIDER_ID:-}
+      OIDC_LLM_MODEL_ID: ${OIDC_LLM_MODEL_ID:-}
+      OIDC_ADMIN_SUBJECTS: ${OIDC_ADMIN_SUBJECTS:-}
       BASE_DOMAIN: ${BASE_DOMAIN:-localhost}
       # F9：栈所有权标签——reconcile 孤儿清扫只清 station.stack=<stackId> 的本栈 FDE 容器/网络，
       # 防并行栈（如 wp3b-e2e 隔离栈，STATION_STACK_ID=station-e2e-43）互删对方 FDE。缺省 default。

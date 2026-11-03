@@ -61,7 +61,7 @@ chat message bodies are bounded to 6 MiB. Other endpoints retain their limits.
 
 ## Upgrade
 
-Apply additive migrations `0026-mode-settings.sql` and `0027-chat-mode.sql` using
+Apply additive migrations `0028-mode-settings.sql` and `0029-chat-mode.sql` using
 the existing migration runner, then deploy the portal and rebuilt frontend.
 The frozen baseline and all existing migration checksums are unchanged. No work
 sessions or existing API bindings need conversion. Chat starts unconfigured until

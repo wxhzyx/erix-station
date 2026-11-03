@@ -66,7 +66,7 @@ bounded to 128 commits; insufficient history fails instead of silently deepening
 
 ## HTTP and persistence
 
-Apply `0028-project-approvals.sql` using the existing migration runner. Frozen
+Apply `0030-project-approvals.sql` using the existing migration runner. Frozen
 baseline and prior migrations are unchanged.
 
 * `GET /api/project-approvals?cwd=...&status=merged`: owner-scoped history; admins

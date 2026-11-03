@@ -239,6 +239,8 @@ test('LLM 段渲染——per-FDE router + key 注入 middleware + 单一 LiteLLM
   assert.ok(text.includes('        customRequestHeaders:'));
   assert.match(text, /    llm-gateway:/);
   assert.ok(text.includes('          - url: "http://station-litellm:4000"'));
+  assert.ok(text.includes('        passHostHeader: false'));
+  assert.ok(text.includes('            preservePath: true'));
   assert.equal(text.split('\n').filter((line) => line === '    llm-gateway:').length, 1);
 });
 

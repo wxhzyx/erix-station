@@ -1476,3 +1476,19 @@ test('#429 登出撤销本登录会话签发的预览凭证；旧 cookie 打 for
     await s.close();
   }
 });
+
+test('SSO-only hides password provider and refuses password and TOTP login endpoints', async () => {
+  const app = await startServer({ overrides: { oidcOnly: true, oidc: { issuer: 'https://sso.example/' } } });
+  try {
+    const providers = await fetch(app.base + '/api/auth/providers');
+    assert.deepEqual(await providers.json(), { sso: true, password: false });
+    for (const endpoint of ['/api/auth/login', '/api/auth/login/totp', '/api/login']) {
+      const response = await fetch(app.base + endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Origin: app.base },
+        body: JSON.stringify({ login: 'admin', password: 'secret', pending_token: 'old-token', code: '123456' }),
+      });
+      assert.equal(response.status, 403, endpoint);
+      assert.equal((await response.json()).error.code, 'password_login_disabled');
+    }
+  } finally { await app.close(); fs.rmSync(app.staticDir, { recursive: true, force: true }); }
+});
