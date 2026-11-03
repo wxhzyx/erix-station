@@ -40,14 +40,13 @@ onUnmounted(() => { epoch++; controller.abort(); });
   <div class="quota-panel" :class="{ 'quota-embedded': embedded }">
     <ElButton native-type="submit" v-if="!embedded" class="station-secondary" @click="show">{{ en ? 'My token quota' : '我的 Token 额度' }}</ElButton>
     <section v-if="open" class="console-card">
-      <div class="card-heading"><div><span class="page-eyebrow">DAILY ALLOWANCE</span><h2>{{ en ? 'Daily token usage' : '每日 Token 额度' }}</h2></div><ElButton native-type="submit" class="station-secondary" :disabled="busy" @click="load">{{ en ? 'Refresh' : '刷新' }}</ElButton></div>
+      <div class="card-heading"><div><h2>{{ en ? 'Daily token usage' : '每日 Token 额度' }}</h2></div><ElButton native-type="submit" class="station-secondary" :disabled="busy" @click="load">{{ en ? 'Refresh' : '刷新' }}</ElButton></div>
       <p v-if="error" role="alert" class="console-error">{{ error }}</p><p v-if="busy" role="status" class="muted">{{ en ? 'Loading…' : '正在加载…' }}</p>
       <template v-if="quota">
         <div class="quota-total"><strong>{{ quota.used.toLocaleString() }}</strong><span>/ {{ quota.daily_limit.toLocaleString() }} Tokens</span></div>
         <div class="quota-meter" role="progressbar" :aria-label="en ? 'Daily quota used and reserved' : '今日已使用及预留额度'" :aria-valuenow="percent" :aria-valuemin="0" :aria-valuemax="100"><span :style="{ width: `${percent}%` }"></span></div>
         <div class="quota-facts"><p>{{ en ? 'Remaining' : '剩余额度' }} <strong>{{ quota.remaining.toLocaleString() }}</strong></p><p>{{ en ? 'Reserved' : '调用中预留' }} <strong>{{ quota.reserved.toLocaleString() }}</strong></p></div>
-        <p class="muted">{{ en ? 'Input + output tokens, shared by chat and development. Resets at 00:00 Beijing time.' : '聊天与开发共用额度，计入输入和输出 Token，每天北京时间 00:00 重置。' }}</p>
-        <div class="quota-request"><h3>{{ en ? 'Need more capacity?' : '需要更高额度？' }}</h3>
+        <div class="quota-request"><h3>{{ en ? 'Quota request' : '额度申请' }}</h3>
           <p v-if="quota.requests.some(r => r.status === 'pending')" class="console-note" role="status">{{ en ? 'Your upgrade request is awaiting administrator approval.' : '额度升级申请已提交，等待管理员审批。' }}</p>
           <form v-else class="assignment-form" @submit.prevent="submit"><div class="form-grid"><label class="settings-field">{{ en ? 'Requested daily limit' : '申请每日上限' }}<input v-model.number="requested" class="settings-select" type="number" :min="quota.daily_limit+1" max="1000000000" required :disabled="busy"></label><label class="settings-field">{{ en ? 'Reason' : '申请原因' }}<textarea v-model="reason" class="settings-select" maxlength="2000" required :disabled="busy" :placeholder="en ? 'Describe your project needs' : '说明项目需要及使用场景'" /></label></div><ElButton native-type="submit" class="station-primary" :disabled="busy">{{ en ? 'Request higher limit' : '申请提高额度' }}</ElButton></form>
           <p v-if="sent" role="status" class="console-success">{{ en ? 'Request submitted' : '申请已提交' }}</p>

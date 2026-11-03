@@ -48,6 +48,17 @@
 .admin-content { max-width: 1600px; margin: auto; padding: 26px 28px; }
 .page-intro { margin-bottom: 18px; }
 .page-intro h2 { font-size: 20px; letter-spacing: -.3px; }
+.page-intro h1 { font-size: 20px; font-weight: 650; letter-spacing: -.3px; }
+.station-topbar .account-trigger{display:flex;align-items:center;gap:8px;background:transparent;border-top:0;border-right:0;border-bottom:0;cursor:pointer;color:var(--station-ink);font:inherit;white-space:nowrap}
+.account-trigger:focus-visible{outline:2px solid var(--station-accent);outline-offset:3px;border-radius:6px}
+.station-work .workspace-drawer-toggle{display:none!important}
+@media(max-width:767px){
+  .station-work .workspace-drawer-toggle{display:inline-flex!important}
+  .station-topbar .rail-profile.account-trigger{display:flex;padding-left:6px;border-left:0;gap:0}
+  .station-topbar .account-trigger strong,.station-topbar .account-trigger>.el-icon{display:none}
+  .station-topbar .station-utilities{gap:2px}
+  .station-topbar .rail-link{padding:6px}
+}
 .console-card, .el-card { border: 1px solid var(--station-line); border-radius: 8px; box-shadow: none; background: #fff; }
 .console-card { padding: 22px; }
 .el-card__header { padding: 18px 20px; }

@@ -64,7 +64,6 @@ onUnmounted(() => { epoch++; controller.abort(); });
   <div class="model-assignment">
     <p v-if="auth.user?.role !== 'admin'" role="alert">{{ en ? 'Administrator access required.' : '仅管理员可配置模型。' }}</p>
     <template v-else>
-      <section class="console-note"><strong>{{ en ? 'One gateway. Individual access.' : '统一接入，按人分配。' }}</strong><p>{{ en ? 'Select a member, then assign models for chat and development. Personal keys and usage accounting stay separate.' : '先选择成员，再分别配置聊天和开发模型。个人密钥与用量统计由平台自动管理。' }}</p><router-link to="/admin/llm">{{ en ? 'Manage API connections →' : '管理 API 接入 →' }}</router-link></section>
       <form class="console-card assignment-form" @submit.prevent="save">
         <label class="settings-field">{{ en ? 'Member' : '配置用户' }}<select v-model="userId" :disabled="busy" class="settings-select" @change="loadSettings"><option value="" disabled>{{ en ? 'Select a member' : '选择用户' }}</option><option v-for="u in users" :key="u.id" :value="u.id">{{ u.display_name || u.login }} · {{ u.login }}</option></select></label>
         <div class="mode-config-tabs" role="group" :aria-label="en ? 'Model configuration mode' : '模型配置模式'"><ElButton native-type="button" :aria-pressed="mode === 'chat'" :disabled="busy" @click="mode = 'chat'">{{ en ? 'Chat model' : '聊天模型' }}</ElButton><ElButton native-type="button" :aria-pressed="mode === 'work'" :disabled="busy || !member?.fde_name" @click="mode = 'work'">{{ en ? 'Development model' : '开发模型' }}</ElButton></div>

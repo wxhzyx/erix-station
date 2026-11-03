@@ -6,7 +6,7 @@ import SharedProjectsView from './SharedProjectsView.vue';
 import {useAuthStore} from '../stores/auth';
 const mounted:ReturnType<typeof mount>[]=[];
 afterEach(()=>{for(const w of mounted.splice(0))w.unmount();vi.unstubAllGlobals();});
-async function setup(state='invited',showLegacyAuthor=false){
+async function setup(state='invited',showLegacyAuthor=false,embedded=false){
   const calls:{url:string;body?:string}[]=[];
   vi.stubGlobal('fetch',vi.fn(async(url:string,options?:RequestInit)=>{
     calls.push({url,body:options?.body as string});
@@ -16,8 +16,9 @@ async function setup(state='invited',showLegacyAuthor=false){
     return new Response(JSON.stringify(data),{status:200});
   }));
   const pinia=createPinia(),auth=useAuthStore(pinia);auth.user={id:'b',login:'DomainB',display_name:'员工 B',role:'fde',fde_name:'seat',auth_source:'oidc'};
-  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/projects',component:SharedProjectsView}]});await router.push('/projects');await router.isReady();
-  const w=mount(SharedProjectsView,{global:{plugins:[pinia,router],stubs:{StationShell:{template:'<div><slot /></div>'}}}});mounted.push(w);await flushPromises();await vi.waitFor(()=>expect(w.text()).toContain('dev/DomainB'));return {w,calls};
+  const path=embedded?'/admin/projects':'/projects';
+  const router=createRouter({history:createMemoryHistory(),routes:[{path,component:SharedProjectsView}]});await router.push(path);await router.isReady();
+  const w=mount(SharedProjectsView,{props:{embedded},global:{plugins:[pinia,router],stubs:{StationShell:{template:'<div data-testid="standalone-shell"><slot /></div>'}}}});mounted.push(w);await flushPromises();await vi.waitFor(()=>expect(w.text()).toContain('dev/DomainB'));return {w,calls,router};
 }
 it('invitation acceptance is explicit and never silently creates a workspace',async()=>{
   const {w,calls}=await setup();expect(calls.filter(x=>x.body)).toHaveLength(0);
@@ -37,4 +38,13 @@ it('PR authors use SSO names instead of historical Gitea account prefixes',async
   await flushPromises();
   await vi.waitFor(()=>expect(w.text()).toContain('员工 B · dev/DomainB'));
   expect(w.text()).not.toContain('sso-old-prefix');
+});
+
+it('admin project selection stays inside the admin route without nesting another shell',async()=>{
+  const {w,router}=await setup('active',false,true);
+  expect(w.find('[data-testid="standalone-shell"]').exists()).toBe(false);
+  w.findComponent({name:'ElSelect'}).vm.$emit('change','p');
+  await flushPromises();
+  expect(router.currentRoute.value.path).toBe('/admin/projects');
+  expect(router.currentRoute.value.query.project).toBe('p');
 });

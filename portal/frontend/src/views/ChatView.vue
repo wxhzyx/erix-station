@@ -11,7 +11,7 @@ import StationShell from '../components/StationShell.vue';
 interface Conversation { id: string; title: string }
 interface Attachment { name: string; mime_type: string; data_base64: string; warnings?: string[] }
 interface Message { id: string; role: string; content: string; attachments?: { name: string; size: number }[] }
-const auth = useAuthStore(); const route = useRoute(); const router = useRouter(); const { locale, t } = useI18n();
+const auth = useAuthStore(); const route = useRoute(); const router = useRouter(); const { locale } = useI18n();
 const en = computed(() => locale.value === 'en');
 const conversations = ref<Conversation[]>([]); const messages = ref<Message[]>([]); const selected = ref('');
 const draft = ref(''); const files = ref<Attachment[]>([]); const error = ref(''); const busy = ref(false); const reading = ref(false);
@@ -97,7 +97,6 @@ async function send() {
   } catch (e) { if (token === epoch) error.value = (e as Error).message; }
   finally { if (token === epoch) busy.value = false; }
 }
-async function logout() { reset(); conversations.value = []; await auth.logout(); await router.replace('/login'); }
 onUnmounted(reset);
 </script>
 <template>
@@ -105,9 +104,7 @@ onUnmounted(reset);
   <div class="station-chat file-drop-region flex h-screen flex-col" :class="{ 'file-dragging': fileDrop.dragging.value }" v-on="fileDrop.events">
     <div v-if="fileDrop.dragging.value" class="file-drop-overlay" role="status">{{ en ? 'Drop files to attach' : '松开鼠标，添加附件' }}</div>
     <header class="station-header flex flex-wrap items-center gap-3">
-      <div><span class="page-eyebrow">WORKSPACE / CHAT</span><h1>{{ en ? 'AI conversation' : 'AI 对话' }}</h1></div><span class="flex-1"></span>
-      <router-link to="/settings?tab=usage" class="header-usage">{{ en ? 'Usage & quota' : '用量与额度' }}</router-link>
-      <ElButton native-type="submit" class="station-secondary" @click="logout">{{ t('common.logout') }}</ElButton>
+      <div><h1>{{ en ? 'AI conversation' : 'AI 对话' }}</h1></div><span class="flex-1"></span>
     </header>
     <main class="chat-main mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 overflow-hidden px-4 py-5">
       <div class="flex gap-3">
@@ -115,7 +112,7 @@ onUnmounted(reset);
         <select :value="selected" :disabled="busy" :aria-label="en ? 'Conversation history' : '历史对话'" class="chat-history min-w-0 flex-1 rounded-xl px-3" @change="choose"><option value="">{{ en ? 'New conversation' : '新的对话' }}</option><option v-for="c in conversations" :key="c.id" :value="c.id">{{ c.title || (en ? 'Untitled conversation' : '未命名对话') }}</option></select>
       </div>
       <section class="chat-stream min-h-0 flex-1 space-y-4 overflow-auto" aria-live="polite" :aria-busy="busy">
-        <div v-if="!messages.length" class="chat-empty"><div class="station-emblem" aria-hidden="true">F<span>_</span></div><div><p class="page-eyebrow">THINK. EXPLORE. CREATE.</p><h2>{{ en ? 'Let’s talk.' : '开始一段新对话' }}</h2><p class="empty-description">{{ en ? 'Explore ideas, understand documents, and turn questions into next steps.' : '梳理想法、理解文档，让每一个问题都有下一步。' }}</p></div><div class="chat-suggestions"><ElButton native-type="button" @click="draft = en ? 'Help me structure this idea: ' : '帮我梳理这个想法：'">{{ en ? 'Explore an idea' : '梳理一个想法' }} <span aria-hidden="true">↗</span></ElButton><ElButton native-type="button" @click="draft = en ? 'Help me analyze this document: ' : '帮我分析这份文档：'">{{ en ? 'Analyze a document' : '分析一份文档' }} <span aria-hidden="true">↗</span></ElButton></div></div>
+        <div v-if="!messages.length" class="chat-empty"><h2>{{ en ? 'New conversation' : '新对话' }}</h2></div>
         <article v-for="message in messages" :key="message.id" class="chat-message rounded-2xl p-5" :class="message.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'">
           <h3 class="mb-2 text-sm font-semibold">{{ message.role === 'user' ? (en ? 'You' : '你') : 'FDE Station' }}</h3>
           <p class="whitespace-pre-wrap break-words">{{ message.content }}</p>
@@ -132,7 +129,6 @@ onUnmounted(reset);
           <label class="station-secondary cursor-pointer rounded-lg px-3 py-2 text-sm">{{ reading ? (en ? 'Reading…' : '读取中…') : (en ? 'Attach files' : '上传文件') }}<input type="file" multiple :accept="accept" :disabled="busy || reading" class="sr-only" @change="upload" /></label>
           <ElButton native-type="submit" class="station-primary rounded-xl px-5 py-2 text-white disabled:opacity-40" :disabled="busy || reading || (!draft.trim() && !files.length)">{{ en ? 'Send' : '发送' }}</ElButton>
         </div>
-        <p class="text-xs text-black/50">{{ en ? 'Drop files here · Text, images, PDF and Office · Up to 5 files' : '文件可直接拖入 · 支持文本、图片、PDF 和 Office · 最多 5 个' }}</p>
       </form>
     </main>
   </div>

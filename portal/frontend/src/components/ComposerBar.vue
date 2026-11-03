@@ -73,7 +73,6 @@ function onKeydown(e: KeyboardEvent) {
     <label class="station-secondary inline-flex cursor-pointer rounded-lg px-3 py-2">📎 上传文件
       <input aria-label="上传工作文件" type="file" multiple :disabled="store.sendDisabled || readingFiles" @change="selectFiles" class="sr-only" />
     </label>
-    <span class="ml-2">拖入文件即可添加 · 支持文本、代码、PDF 和 Office · 最多 8 个</span>
     <div v-for="(file, index) in store.pendingAttachments" :key="index" class="inline-flex m-1 rounded bg-gray-100 px-2 py-1">
       {{ file.name }} <button :disabled="store.sendDisabled || readingFiles" class="ml-2" :aria-label="`移除 ${file.name}`" @click="store.pendingAttachments.splice(index, 1)">×</button>
     </div>
