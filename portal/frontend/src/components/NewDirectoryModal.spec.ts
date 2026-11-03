@@ -53,7 +53,7 @@ describe('NewDirectoryModal · ModalShell integration', () => {
     vi.spyOn(store, 'createDir').mockResolvedValue({ error: 'directory already exists' });
     await flushPromises();
 
-    await wrapper.get('[data-test="modal-backdrop"]').trigger('click');
+    for (const event of ['mousedown', 'mouseup', 'click']) await wrapper.get('.el-overlay-dialog').trigger(event);
     expect(onClose).toHaveBeenCalledTimes(1);
     await wrapper.get('#newDirName').setValue('existing-project');
     await wrapper.get('form').trigger('submit.prevent');

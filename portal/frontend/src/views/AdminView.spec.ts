@@ -966,7 +966,7 @@ describe('Admin modals', () => {
     await flushPromises();
     await wrapper.get('[role="dialog"]').trigger('click');
     expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
-    await wrapper.get('[data-test="modal-backdrop"]').trigger('click');
+    for (const event of ['mousedown', 'mouseup', 'click']) await wrapper.get('.el-overlay-dialog').trigger(event);
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     wrapper.unmount();
@@ -1006,18 +1006,18 @@ describe('AdminView · FDE 用户', () => {
     });
     const list = wrapper.find('[data-test="user-list"]');
     expect(list.text()).toContain('alice');
-    expect(list.findAll('[data-test="user-row"]')).toHaveLength(2);
-    expect(list.text()).toContain('✓');
-    expect(list.findAll('thead th')).toHaveLength(9);
-    expect(list.findAll('thead th')[6].text()).toBe('开户 / 下线');
-    expect(list.findAll('thead th')[7].text()).toBe('最近登录');
-    const rows = list.findAll('[data-test="user-row"]');
-    expect(rows[0].findAll('td')).toHaveLength(9);
-    expect(rows[0].findAll('td')[6].text()).toContain('失败');
-    expect(rows[0].findAll('td')[6].find('span').attributes('title')).toBe('Docker unavailable');
-    expect(rows[0].findAll('td')[7].text())
+    expect(list.findAll('.member-table .el-table__row')).toHaveLength(2);
+    expect(list.text()).not.toContain('alpha-fde');
+    expect(list.findAll('thead th')).toHaveLength(7);
+    expect(list.findAll('thead th')[4].text()).toBe('开户 / 下线');
+    expect(list.findAll('thead th')[5].text()).toBe('最近登录');
+    const rows = list.findAll('.member-table .el-table__row');
+    expect(rows[0].findAll('td')).toHaveLength(7);
+    expect(rows[0].findAll('td')[4].text()).toContain('失败');
+    expect(rows[0].findAll('td')[4].find('span').attributes('title')).toBe('Docker unavailable');
+    expect(rows[0].findAll('td')[5].text())
       .toBe(new Date('2026-10-03T12:00:00.000Z').toLocaleString('zh-CN'));
-    expect(rows[1].findAll('td')[7].text()).toBe('从未登录');
+    expect(rows[1].findAll('td')[5].text()).toBe('从未登录');
     expect(rows[0].findAll('button')).toHaveLength(4);
     expect(rows[0].get('[data-test="delete-member"]').text()).toBe('删除成员');
     expect(list.find('[data-test="user-menu-button"]').exists()).toBe(false);
@@ -1081,7 +1081,7 @@ describe('AdminView · FDE 用户', () => {
       url === '/api/admin/fdes/alpha-fde/llm'
         ? jsonResponse(200, { config: null, active_run: false })
         : undefined);
-    const row = wrapper.findAll('[data-test="user-row"]').find((item) => item.text().includes('alice'));
+    const row = wrapper.findAll('.member-table .el-table__row').find((item) => item.text().includes('alice'));
     if (!row) throw new Error('alice row not found');
     await row.get('[data-test="edit-user"]').trigger('click');
 
@@ -1220,7 +1220,7 @@ describe('AdminView · FDE 用户', () => {
       }
       return undefined;
     });
-    const bobRow = wrapper.findAll('[data-test="user-row"]').find((row) => row.text().includes('bob'));
+    const bobRow = wrapper.findAll('.member-table .el-table__row').find((row) => row.text().includes('bob'));
     if (!bobRow) throw new Error('bob row not found');
     await bobRow.get('[data-test="edit-user"]').trigger('click');
     const editor = wrapper.get('[data-test="user-edit-modal"]');
@@ -1250,7 +1250,7 @@ describe('AdminView · FDE 用户', () => {
     expect(resumedEditor.get('[data-test="edit-tab-security"]').attributes('aria-selected')).toBe('true');
     expect(resumedEditor.get('[data-test="edit-panel-security"]').isVisible()).toBe(true);
 
-    const aliceRow = wrapper.findAll('[data-test="user-row"]').find((row) => row.text().includes('alice'));
+    const aliceRow = wrapper.findAll('.member-table .el-table__row').find((row) => row.text().includes('alice'));
     if (!aliceRow) throw new Error('alice row not found');
     await resumedEditor.get('[aria-label="关闭"]').trigger('click');
     await aliceRow.get('[data-test="edit-user"]').trigger('click');
@@ -1272,7 +1272,7 @@ describe('AdminView · FDE 用户', () => {
       }
       return undefined;
     });
-    const aliceRow = wrapper.findAll('[data-test="user-row"]').find((row) => row.text().includes('alice'));
+    const aliceRow = wrapper.findAll('.member-table .el-table__row').find((row) => row.text().includes('alice'));
     if (!aliceRow) throw new Error('alice row not found');
     await aliceRow.get('[data-test="edit-user"]').trigger('click');
     const editor = wrapper.get('[data-test="user-edit-modal"]');
@@ -1297,7 +1297,7 @@ describe('AdminView · FDE 用户', () => {
       }
       return undefined;
     });
-    const aliceRow = wrapper.findAll('[data-test="user-row"]').find((row) => row.text().includes('alice'));
+    const aliceRow = wrapper.findAll('.member-table .el-table__row').find((row) => row.text().includes('alice'));
     if (!aliceRow) throw new Error('alice row not found');
     await aliceRow.get('[data-test="edit-user"]').trigger('click');
 
@@ -1331,7 +1331,7 @@ describe('AdminView · FDE 用户', () => {
       url === '/api/admin/fdes/alpha-fde/llm'
         ? jsonResponse(200, { config: null, active_run: false })
         : undefined);
-    const rows = wrapper.findAll('[data-test="user-row"]');
+    const rows = wrapper.findAll('.member-table .el-table__row');
 
     await rows[0].trigger('click');
     expect(wrapper.find('[data-test="user-details-modal"]').exists()).toBe(false);
@@ -1358,16 +1358,16 @@ describe('AdminView · FDE 用户', () => {
     const { wrapper } = await mountAdmin();
     const search = wrapper.get('[data-test="user-search"]');
     await search.setValue('ALIce');
-    expect(wrapper.findAll('[data-test="user-row"]')).toHaveLength(1);
-    expect(wrapper.find('[data-test="user-row"]').text()).toContain('alice');
+    expect(wrapper.findAll('.member-table .el-table__row')).toHaveLength(1);
+    expect(wrapper.find('.member-table .el-table__row').text()).toContain('alice');
 
     await search.setValue('bOB');
-    expect(wrapper.findAll('[data-test="user-row"]')).toHaveLength(1);
-    expect(wrapper.find('[data-test="user-row"]').text()).toContain('bob');
+    expect(wrapper.findAll('.member-table .el-table__row')).toHaveLength(1);
+    expect(wrapper.find('.member-table .el-table__row').text()).toContain('bob');
 
     await search.setValue('ALPHA-FDE');
-    expect(wrapper.findAll('[data-test="user-row"]')).toHaveLength(1);
-    expect(wrapper.find('[data-test="user-row"]').text()).toContain('alpha-fde');
+    expect(wrapper.findAll('.member-table .el-table__row')).toHaveLength(1);
+    expect(wrapper.find('.member-table .el-table__row').text()).toContain('alice');
     wrapper.unmount();
   });
 
@@ -1382,12 +1382,12 @@ describe('AdminView · FDE 用户', () => {
       }
       return undefined;
     });
-    await wrapper.find('[data-test="user-row"] button[aria-label="停用"]').trigger('click');
+    await wrapper.find('.member-table .el-table__row button[aria-label="停用"]').trigger('click');
     await flushPromises();
     const patch = callsTo(fetchFn, 'PATCH', '/api/admin/users/u1')[0];
     expect(JSON.parse(String(patch[1]?.body))).toEqual({ status: 'disabled' });
-    expect(wrapper.find('[data-test="user-row"]').text()).toContain('停用');
-    expect(wrapper.find('[data-test="user-row"] button[aria-label="启用"]').exists()).toBe(true);
+    expect(wrapper.find('.member-table .el-table__row').text()).toContain('停用');
+    expect(wrapper.find('.member-table .el-table__row button[aria-label="启用"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
@@ -1400,7 +1400,7 @@ describe('AdminView · FDE 用户', () => {
       }
       return undefined;
     });
-    await wrapper.get('[data-test="user-row"]').get('[data-test="edit-user"]').trigger('click');
+    await wrapper.get('.member-table .el-table__row').get('[data-test="edit-user"]').trigger('click');
     await wrapper.get('[data-test="user-edit-modal"] [data-test="edit-tab-danger"]').trigger('click');
     await wrapper.get('[data-test="open-user-delete"]').trigger('click');
     await flushPromises();
@@ -1440,7 +1440,7 @@ describe('AdminView · FDE 用户', () => {
     const { wrapper } = await mountAdmin('/admin/users', (url, init) =>
       url === '/api/admin/users' && !init?.method ? jsonResponse(200, { items: [self] }) : undefined);
     expect(wrapper.find('[data-test="user-menu-button"]').exists()).toBe(false);
-    await wrapper.get('[data-test="user-row"]').get('[data-test="edit-user"]').trigger('click');
+    await wrapper.get('.member-table .el-table__row').get('[data-test="edit-user"]').trigger('click');
     const editor = wrapper.get('[data-test="user-edit-modal"]');
     await editor.get('[data-test="edit-tab-danger"]').trigger('click');
     expect(editor.find('[data-test="open-user-delete"]').exists()).toBe(false);
@@ -1466,7 +1466,7 @@ describe('AdminView · FDE 用户', () => {
     resolveUsers?.(jsonResponse(200, USERS));
     await flushPromises();
     expect(loading.wrapper.find('[data-test="user-skeleton"]').exists()).toBe(false);
-    expect(loading.wrapper.findAll('[data-test="user-row"]')).toHaveLength(2);
+    expect(loading.wrapper.findAll('.member-table .el-table__row')).toHaveLength(2);
     loading.wrapper.unmount();
   });
 
@@ -1499,7 +1499,7 @@ describe('AdminView · FDE 用户', () => {
       }
       return undefined;
     });
-    const row = wrapper.findAll('[data-test="user-row"]').find((item) => item.text().includes('alice'));
+    const row = wrapper.findAll('.member-table .el-table__row').find((item) => item.text().includes('alice'));
     if (!row) throw new Error('alice row not found');
     expect(row.text()).toContain('失败');
     await row.get('[data-test="edit-user"]').trigger('click');
@@ -1540,7 +1540,7 @@ describe('AdminView · FDE 用户', () => {
       }
       return undefined;
     });
-    const row = wrapper.get('[data-test="user-row"]');
+    const row = wrapper.get('.member-table .el-table__row');
     const status = row.get('[data-test="onboarding-status"]');
     expect(status.text()).toMatch(/待凭据\s+·\s+LLM 绑定失败/);
     expect(status.attributes('title'))
@@ -1575,7 +1575,7 @@ describe('AdminView · FDE 用户', () => {
       }
       return undefined;
     });
-    const row = wrapper.get('[data-test="user-row"]');
+    const row = wrapper.get('.member-table .el-table__row');
     await row.get('[data-test="edit-user"]').trigger('click');
     await wrapper.get('[data-test="user-edit-modal"] [data-test="edit-tab-danger"]').trigger('click');
     await wrapper.get('[data-test="open-user-delete"]').trigger('click');
@@ -1585,7 +1585,7 @@ describe('AdminView · FDE 用户', () => {
     await flushPromises();
 
     expect(callsTo(fetchFn, 'DELETE', '/api/admin/users/u1')).toHaveLength(1);
-    expect(wrapper.findAll('[data-test="user-row"]')).toHaveLength(1);
+    expect(wrapper.findAll('.member-table .el-table__row')).toHaveLength(1);
     expect(row.get('[data-test="offboarding-status"]').text()).toContain('下线中');
     expect(wrapper.text()).toContain('已开始下线；账号立即停用');
     expect(row.text()).toContain('停用');
@@ -1616,7 +1616,7 @@ describe('AdminView · FDE 用户', () => {
       }
       return undefined;
     });
-    const row = wrapper.get('[data-test="user-row"]');
+    const row = wrapper.get('.member-table .el-table__row');
     expect(row.get('[data-test="offboarding-status"]').text()).toContain('下线失败');
     expect(row.get('[data-test="offboarding-status"]').text()).toContain('停止 FDE 容器');
     expect(row.get('[data-test="offboarding-status"]').attributes('title')).toBe('Docker unavailable');

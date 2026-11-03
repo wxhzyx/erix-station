@@ -5,6 +5,7 @@
 // cookie 语义见 docs/api/portal.md §2.5；两步登录见 §2.2/§2.3。
 
 import http from 'node:http';
+import { listRuntimePorts } from './runtime-ports.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { URL } from 'node:url';
@@ -1608,6 +1609,14 @@ async function handleAdminApi(req, res, ctx, url) {
   if (pathname === '/api/admin/preview-misses' && req.method === 'GET') {
     const days = Number(url.searchParams.get('days') ?? 14);
     return sendJson(res, 200, await previewmiss.summarizePreviewMisses({ pool: ctx.pool, days }));
+  }
+
+  if (pathname === '/api/admin/preview-ports/runtime') {
+    if (req.method !== 'GET') throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+    const snapshot = await listRuntimePorts(ctx.pool);
+    await auth.audit(ctx.pool, { actorId: session.user.id, action: 'admin.runtime_ports_listed',
+      target: 'runtime_ports', details: { item_count: snapshot.items.length, total: snapshot.total } });
+    return sendJson(res, 200, snapshot);
   }
 
   if (pathname === '/api/admin/preview-ports/usage') {

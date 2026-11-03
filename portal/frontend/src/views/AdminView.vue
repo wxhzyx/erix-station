@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ModalShell from '../components/ModalShell.vue';
@@ -292,12 +293,12 @@ onMounted(() => {
       <div class="flex items-center gap-3">
         <h2 class="text-base font-semibold">{{ t('admin.llm.sectionTitle') }}</h2>
         <span class="flex-1"></span>
-        <button
-          type="button"
+        <ElButton type="primary"
+          native-type="button"
           data-test="open-add-provider"
           class="rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover"
           @click="showAddProvider = true"
-        >{{ t('admin.llm.addProvider') }}</button>
+        >{{ t('admin.llm.addProvider') }}</ElButton>
       </div>
       <p v-if="admin.llmErr" class="syserr my-1" role="alert">{{ admin.llmErr }}</p>
 
@@ -315,29 +316,29 @@ onMounted(() => {
             <span class="font-semibold">{{ p.name }}</span>
             <span class="text-black/50 text-xs break-all">{{ p.base_url }}</span>
             <span class="flex-1"></span>
-            <button
-              type="button"
+            <ElButton type="primary"
+              native-type="button"
               data-test="open-add-model"
               class="rounded-md bg-brand px-2 py-0.5 text-xs text-white hover:bg-brand-hover"
               @click="openAddModel(String(p.id))"
-            >{{ t('admin.llm.addModel') }}</button>
-            <button
-              type="button"
+            >{{ t('admin.llm.addModel') }}</ElButton>
+            <ElButton
+              native-type="button"
               data-test="toggle-provider-models"
               class="rounded-md border border-black/20 px-2 py-0.5 text-xs hover:bg-black/5"
               @click="admin.toggleExpandedProvider(String(p.id))"
-            >{{ admin.expandedProviders.includes(String(p.id)) ? t('admin.llm.collapseModels') : t('admin.llm.modelsCount', { count: p.models.length }) }}</button>
-            <button
-              type="button"
+            >{{ admin.expandedProviders.includes(String(p.id)) ? t('admin.llm.collapseModels') : t('admin.llm.modelsCount', { count: p.models.length }) }}</ElButton>
+            <ElButton
+              native-type="button"
               data-test="edit-provider"
               class="rounded-md border border-black/20 px-2 py-0.5 text-xs hover:bg-black/5"
               @click="openEditProvider(p)"
-            >{{ t('admin.edit') }}</button>
-            <button
-              type="button"
+            >{{ t('admin.edit') }}</ElButton>
+            <ElButton
+              native-type="button"
               class="rounded-md border border-red-600/60 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50"
               @click="deleteTarget = { type: 'provider', provider: p }"
-            >{{ t('admin.delete') }}</button>
+            >{{ t('admin.delete') }}</ElButton>
           </div>
 
           <div v-if="admin.expandedProviders.includes(String(p.id))" class="border-t border-dashed border-black/15 px-3 py-2">
@@ -398,22 +399,22 @@ onMounted(() => {
                     >{{ m.enabled ? t('admin.enabled') : t('admin.disabled') }}</span>
                   </td>
                   <td class="py-1 whitespace-nowrap">
-                    <button
-                      type="button"
+                    <ElButton
+                      native-type="button"
                       class="mr-1 rounded-md border border-black/20 px-2 py-0.5 text-xs hover:bg-black/5"
                       @click="admin.toggleModel(m)"
-                    >{{ m.enabled ? t('admin.disabled') : t('admin.enabled') }}</button>
-                    <button
-                      type="button"
+                    >{{ m.enabled ? t('admin.disabled') : t('admin.enabled') }}</ElButton>
+                    <ElButton
+                      native-type="button"
                       data-test="edit-model"
                       class="mr-1 rounded-md border border-black/20 px-2 py-0.5 text-xs hover:bg-black/5"
                       @click="openEditModel(m)"
-                    >{{ t('admin.edit') }}</button>
-                    <button
-                      type="button"
+                    >{{ t('admin.edit') }}</ElButton>
+                    <ElButton
+                      native-type="button"
                       class="rounded-md border border-red-600/60 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50"
                       @click="deleteTarget = { type: 'model', model: m }"
-                    >{{ t('admin.delete') }}</button>
+                    >{{ t('admin.delete') }}</ElButton>
                   </td>
                 </tr>
               </tbody>
@@ -432,7 +433,7 @@ onMounted(() => {
   >
     <div class="flex items-center gap-2 border-b border-black/10 px-3 py-2">
       <h2 class="text-sm font-medium">{{ t('admin.llm.addProviderTitle') }}</h2>
-      <button type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="closeAddProvider">✕</button>
+      <ElButton native-type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="closeAddProvider">✕</ElButton>
     </div>
     <form data-test="add-provider-form" class="grid gap-3 px-3 py-3" @submit.prevent="onAddProvider">
       <label class="flex flex-col gap-1 text-xs text-black/55">
@@ -456,8 +457,8 @@ onMounted(() => {
       </label>
       <p v-if="admin.llmErr" class="syserr" role="alert">{{ admin.llmErr }}</p>
       <div class="flex gap-2">
-        <button type="submit" class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover">{{ t('admin.llm.addProvider') }}</button>
-        <button type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="closeAddProvider">{{ t('common.cancel') }}</button>
+        <ElButton type="primary" native-type="submit" class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover">{{ t('admin.llm.addProvider') }}</ElButton>
+        <ElButton native-type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="closeAddProvider">{{ t('common.cancel') }}</ElButton>
       </div>
     </form>
   </ModalShell>
@@ -469,7 +470,7 @@ onMounted(() => {
   >
     <div class="flex items-center gap-2 border-b border-black/10 px-3 py-2">
       <h2 class="text-sm font-medium">{{ t('admin.llm.editProviderTitle', { name: editingProvider.name }) }}</h2>
-      <button type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="closeEditProvider">✕</button>
+      <ElButton native-type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="closeEditProvider">✕</ElButton>
     </div>
     <form data-test="edit-provider-form" class="grid gap-3 px-3 py-3" @submit.prevent="onUpdateProvider">
       <p class="text-sm">{{ editingProvider.name }}</p>
@@ -490,8 +491,8 @@ onMounted(() => {
       </label>
       <p v-if="admin.llmErr" class="syserr" role="alert">{{ admin.llmErr }}</p>
       <div class="flex gap-2">
-        <button type="submit" class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover">{{ t('admin.save') }}</button>
-        <button type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="closeEditProvider">{{ t('common.cancel') }}</button>
+        <ElButton type="primary" native-type="submit" class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover">{{ t('admin.save') }}</ElButton>
+        <ElButton native-type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="closeEditProvider">{{ t('common.cancel') }}</ElButton>
       </div>
     </form>
   </ModalShell>
@@ -504,7 +505,7 @@ onMounted(() => {
   >
     <div class="flex items-center gap-2 border-b border-black/10 px-3 py-2">
       <h2 class="text-sm font-medium">{{ t('admin.llm.addModelTitle') }}</h2>
-      <button type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="closeAddModel">✕</button>
+      <ElButton native-type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="closeAddModel">✕</ElButton>
     </div>
     <form data-test="add-model-form" class="grid gap-3 px-3 py-3 sm:grid-cols-2" @submit.prevent="onAddModel">
       <label class="flex flex-col gap-1 text-xs text-black/55">
@@ -565,8 +566,8 @@ onMounted(() => {
       </label>
       <p v-if="admin.llmErr" class="syserr sm:col-span-2" role="alert">{{ admin.llmErr }}</p>
       <div class="flex gap-2 sm:col-span-2">
-        <button type="submit" class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover">{{ t('admin.llm.addModel') }}</button>
-        <button type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="closeAddModel">{{ t('common.cancel') }}</button>
+        <ElButton type="primary" native-type="submit" class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover">{{ t('admin.llm.addModel') }}</ElButton>
+        <ElButton native-type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="closeAddModel">{{ t('common.cancel') }}</ElButton>
       </div>
     </form>
   </ModalShell>
@@ -579,7 +580,7 @@ onMounted(() => {
   >
     <div class="flex items-center gap-2 border-b border-black/10 px-3 py-2">
       <h2 class="text-sm font-medium">{{ t('admin.llm.editModelTitle', { model: editingModel.name }) }}</h2>
-      <button type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="editingModel = null">✕</button>
+      <ElButton native-type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="editingModel = null">✕</ElButton>
     </div>
     <form data-test="edit-model-form" class="grid gap-3 px-3 py-3 sm:grid-cols-2" @submit.prevent="onUpdateModel">
       <label class="flex flex-col gap-1 text-xs text-black/55 sm:col-span-2">
@@ -643,14 +644,14 @@ onMounted(() => {
           {{ t('admin.llm.colMaxOutputTokens') }}
           <input v-model="modelEditForm.max_output_tokens" data-test="edit-model-max-output-tokens" type="number" min="1" placeholder="32000" class="rounded-md border border-black/20 px-2 py-1 text-sm">
         </label>
-        <button
-          type="button"
+        <ElButton
+          native-type="button"
           data-test="reset-max-output-tokens"
           :disabled="maxOutputQuarterWindow === null"
           :title="maxOutputQuarterWindow === null ? t('admin.llm.maxOutputResetNeedsWindow') : t('admin.llm.maxOutputResetHint')"
           class="self-start rounded-md border border-black/20 px-2 py-1 text-xs hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
           @click="resetMaxOutputToQuarterWindow"
-        >{{ t('admin.llm.maxOutputReset') }}</button>
+        >{{ t('admin.llm.maxOutputReset') }}</ElButton>
         <span data-test="edit-model-max-output-tokens-hint" class="text-[0.7rem] text-black/45">{{ t('admin.llm.editMaxOutputTokensHint') }}</span>
         <span class="text-[0.7rem] text-black/45">{{ t('admin.llm.maxOutputResetHint') }}</span>
       </div>
@@ -686,24 +687,24 @@ onMounted(() => {
         <p class="mt-1 text-sm">{{ t('admin.llm.confirmCallNameBody', { from: pendingCallName.from, to: pendingCallName.to }) }}</p>
         <p class="mt-1 text-sm font-medium text-red-800">{{ t('admin.llm.confirmCallNameWarning') }}</p>
         <div class="mt-2 flex gap-2">
-          <button
-            type="button"
+          <ElButton type="danger"
+            native-type="button"
             data-test="confirm-call-name"
             class="flex-1 rounded-md bg-red-700 px-2.5 py-1 text-sm text-white hover:bg-red-800"
             @click="onConfirmCallName"
-          >{{ t('admin.llm.confirmCallNameAction') }}</button>
-          <button
-            type="button"
+          >{{ t('admin.llm.confirmCallNameAction') }}</ElButton>
+          <ElButton
+            native-type="button"
             data-test="cancel-call-name"
             class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5"
             @click="cancelCallName"
-          >{{ t('common.cancel') }}</button>
+          >{{ t('common.cancel') }}</ElButton>
         </div>
       </div>
       <p v-if="admin.llmErr" class="syserr sm:col-span-2" role="alert">{{ admin.llmErr }}</p>
       <div class="flex gap-2 sm:col-span-2">
-        <button type="submit" class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover">{{ t('admin.save') }}</button>
-        <button type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="editingModel = null">{{ t('common.cancel') }}</button>
+        <ElButton type="primary" native-type="submit" class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover">{{ t('admin.save') }}</ElButton>
+        <ElButton native-type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="editingModel = null">{{ t('common.cancel') }}</ElButton>
       </div>
     </form>
   </ModalShell>
@@ -715,24 +716,24 @@ onMounted(() => {
   >
     <div class="flex items-center gap-2 border-b border-black/10 px-3 py-2">
       <h2 class="text-sm font-medium">{{ t('admin.confirmDeleteTitle') }}</h2>
-      <button type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="deleteTarget = null">✕</button>
+      <ElButton native-type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="deleteTarget = null">✕</ElButton>
     </div>
     <div class="p-3">
       <p>{{ deleteMessage }}</p>
       <p v-if="admin.llmErr" class="syserr mt-2" role="alert">{{ admin.llmErr }}</p>
       <div class="mt-3 flex gap-2">
-        <button
-          type="button"
+        <ElButton type="danger"
+          native-type="button"
           data-test="confirm-delete"
           :disabled="deleting"
           class="flex-1 rounded-md bg-red-700 px-2.5 py-1 text-sm text-white hover:bg-red-800 disabled:opacity-50"
           @click="onConfirmDelete"
-        >{{ t('admin.delete') }}</button>
-        <button
-          type="button"
+        >{{ t('admin.delete') }}</ElButton>
+        <ElButton
+          native-type="button"
           class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5"
           @click="deleteTarget = null"
-        >{{ t('common.cancel') }}</button>
+        >{{ t('common.cancel') }}</ElButton>
       </div>
     </div>
   </ModalShell>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus';
 // 登录页：观感对齐旧 index.html renderLogin() 的 Bootstrap 登录卡（居中卡、品牌绿主按钮、
 // 两步切换）。字段/按钮文案/错误展示位置保持逐字等价。
 // issue #101 P1：用户可见文案走 i18n（login.*，zh-CN/en 逐字等价），卡片右上角挂语言切换菜单。
@@ -85,10 +86,10 @@ async function onTotpSubmit() {
             id="loginPass" v-model="password" type="password" autocomplete="current-password"
             class="w-full rounded-md border border-black/20 px-3 py-1.5 mb-3 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
           >
-          <button
-            type="submit" :disabled="auth.loading"
+          <ElButton type="primary"
+            native-type="submit" :disabled="auth.loading"
             class="w-full rounded-md bg-brand hover:bg-brand-hover active:bg-brand-active text-white py-1.5 disabled:opacity-75"
-          >{{ t('login.next') }}</button>
+          >{{ t('login.next') }}</ElButton>
         </form>
 
         <!-- 第二步：TOTP（pending_token 已换取） -->
@@ -100,15 +101,15 @@ async function onTotpSubmit() {
             inputmode="numeric" maxlength="6" autocomplete="one-time-code"
             class="w-full rounded-md border border-black/20 px-3 py-1.5 mb-3 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
           >
-          <button
-            type="submit" :disabled="auth.loading"
+          <ElButton type="primary"
+            native-type="submit" :disabled="auth.loading"
             class="w-full rounded-md bg-brand hover:bg-brand-hover active:bg-brand-active text-white py-1.5 disabled:opacity-75"
-          >{{ t('login.totpSubmit') }}</button>
-          <button
-            type="button"
+          >{{ t('login.totpSubmit') }}</ElButton>
+          <ElButton
+            native-type="button"
             class="w-full rounded-md border border-black/20 text-black/80 py-1.5 mt-2 hover:bg-black/5"
             @click="auth.backToLogin()"
-          >{{ t('login.backToLogin') }}</button>
+          >{{ t('login.backToLogin') }}</ElButton>
         </form>
 
         <p class="text-red-600 text-sm mt-3 mb-0" role="alert">{{ auth.error }}</p>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton, ElTable, ElTableColumn } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ModalShell from '../components/ModalShell.vue';
@@ -500,11 +501,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="mx-auto w-full max-w-5xl">
+  <section class="w-full">
     <header class="mb-3 flex flex-wrap items-center gap-3">
       <h2 class="text-base font-semibold">{{ t('admin.fde.sectionTitle') }}</h2>
       <div class="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
-        <label class="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
+        <label class="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
           <span class="sr-only">{{ t('admin.fde.searchPlaceholder') }}</span>
           <span aria-hidden="true" class="absolute left-2 top-1/2 -translate-y-1/2 text-black/45">🔍</span>
           <input
@@ -515,23 +516,23 @@ onBeforeUnmount(() => {
             :placeholder="t('admin.fde.searchPlaceholder')"
           >
         </label>
-        <button
-          type="button"
+        <ElButton type="primary"
+          native-type="button"
           data-test="open-add-user"
           class="shrink-0 rounded-md bg-brand px-2.5 py-1.5 text-sm text-white hover:bg-brand-hover"
           @click="showAddUser = true"
-        >{{ t('admin.fde.createUser') }}</button>
+        >{{ t('admin.fde.createUser') }}</ElButton>
       </div>
     </header>
 
     <p v-if="admin.fdeErr" class="syserr mb-2 flex flex-wrap items-center gap-2" role="alert">
       <span>{{ admin.fdeErr }}</span>
-      <button
-        type="button"
+      <ElButton
+        native-type="button"
         data-test="retry-users"
         class="rounded border border-current px-2 py-0.5 text-xs hover:bg-black/5"
         @click="admin.loadUsers()"
-      >{{ t('common.retry') }}</button>
+      >{{ t('common.retry') }}</ElButton>
     </p>
 
     <div data-test="user-list" class="rounded-lg border border-black/10 bg-white">
@@ -551,64 +552,28 @@ onBeforeUnmount(() => {
 
       <div v-else-if="admin.usersLoaded && admin.users.length === 0" class="px-4 py-10 text-center">
         <p class="muted">{{ t('admin.fde.emptyUsers') }}</p>
-        <button
-          type="button"
+        <ElButton type="primary"
+          native-type="button"
           class="mt-3 rounded-md bg-brand px-3 py-1.5 text-sm text-white hover:bg-brand-hover"
           @click="showAddUser = true"
-        >{{ t('admin.fde.createUser') }}</button>
+        >{{ t('admin.fde.createUser') }}</ElButton>
       </div>
 
       <div v-else-if="admin.usersLoaded && filteredUsers.length === 0" class="px-4 py-8 text-center muted">
         {{ t('admin.fde.searchEmpty') }}
       </div>
 
-      <table v-else-if="admin.usersLoaded" data-test="user-table" class="w-full table-fixed text-left text-sm">
-          <colgroup>
-            <col class="w-[11%]">
-            <col class="w-[15%]">
-            <col class="w-[8%]">
-            <col class="w-[12%]">
-            <col class="w-[5%]">
-            <col class="w-[8%]">
-            <col class="w-[13%]">
-            <col class="w-[15%]">
-            <col class="w-[13%]">
-          </colgroup>
-          <thead class="border-b border-black/10 bg-black/[0.025] text-xs text-black/55">
-            <tr>
-              <th scope="col" class="px-3 py-2 font-medium">{{ t('admin.fde.colLogin') }}</th>
-              <th scope="col" class="px-3 py-2 font-medium">{{ t('admin.fde.colDisplayName') }}</th>
-              <th scope="col" class="px-3 py-2 font-medium">{{ t('admin.fde.colRole') }}</th>
-              <th scope="col" class="px-3 py-2 font-medium">{{ t('admin.fde.colFde') }}</th>
-              <th scope="col" class="px-3 py-2 font-medium">{{ t('admin.fde.colMfa') }}</th>
-              <th scope="col" class="px-3 py-2 font-medium">{{ t('admin.fde.colStatus') }}</th>
-              <th scope="col" class="px-3 py-2 font-medium">{{ t('admin.fde.colLifecycle') }}</th>
-              <th scope="col" class="px-3 py-2 font-medium">{{ t('admin.fde.lastLogin') }}</th>
-              <th scope="col" class="px-3 py-2 font-medium">{{ t('admin.fde.colActions') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template v-for="user in filteredUsers" :key="user.id">
-              <tr data-test="user-row" class="border-b border-black/10">
-                <td class="truncate px-3 py-2.5 font-medium" :title="user.login">{{ user.login }}</td>
-                <td class="truncate px-3 py-2.5 text-black/65" :title="user.display_name ?? user.login">
+      <ElTable v-else-if="admin.usersLoaded" :data="filteredUsers" row-key="id" data-test="user-table" class="member-table">
+        <ElTableColumn :label="t('admin.fde.colLogin')" min-width="140"><template #default="{ row: user }">{{ user.login }}<p v-if="rowErrors[user.id]" class="syserr" role="alert">{{ rowErrors[user.id] }}</p><p v-else-if="rowMessages[user.id]" class="text-green-700" role="status">{{ rowMessages[user.id] }}</p></template></ElTableColumn>
+        <ElTableColumn :label="t('admin.fde.colDisplayName')" min-width="170"><template #default="{ row: user }">
                   {{ user.display_name || user.login }}
-                </td>
-                <td class="px-3 py-2.5">
+                </template></ElTableColumn>
+        <ElTableColumn :label="t('admin.fde.colRole')" min-width="100"><template #default="{ row: user }">
                   <span class="inline-flex rounded-full border border-black/20 px-2 py-0.5 text-xs text-black/70">
                     {{ user.role === 'admin' ? t('admin.fde.roleAdmin') : t('admin.fde.roleFde') }}
                   </span>
-                </td>
-                <td class="truncate px-3 py-2.5">
-                  <span v-if="user.fde_name" class="max-w-full truncate">{{ user.fde_name }}</span>
-                  <span v-else class="text-black/35">—</span>
-                </td>
-                <td class="px-3 py-2.5">
-                  <span :aria-label="user.totp_enabled ? t('admin.fde.mfaEnabled') : t('admin.fde.mfaDisabled')">
-                    {{ user.totp_enabled ? '✓' : '—' }}
-                  </span>
-                </td>
-                <td class="px-3 py-2.5">
+                </template></ElTableColumn>
+        <ElTableColumn :label="t('admin.fde.colStatus')" min-width="110"><template #default="{ row: user }">
                   <span v-if="user.status === 'active'" class="inline-flex items-center gap-1.5 text-green-700">
                     <span aria-hidden="true">●</span>{{ t('admin.fde.statusActive') }}
                   </span>
@@ -618,8 +583,8 @@ onBeforeUnmount(() => {
                   <span v-else class="inline-flex items-center gap-1.5 text-black/50">
                     <span aria-hidden="true">○</span>{{ t('admin.fde.statusAwaitingCredential') }}
                   </span>
-                </td>
-                <td class="px-2 py-2.5">
+                </template></ElTableColumn>
+        <ElTableColumn :label="t('admin.fde.colLifecycle')" min-width="170"><template #default="{ row: user }">
                   <div v-if="user.onboarding" class="mb-1">
                     <span
                       data-test="onboarding-status"
@@ -632,14 +597,14 @@ onBeforeUnmount(() => {
                       {{ t(`admin.fde.onboarding.${user.onboarding.state}`) }}
                       <span v-if="user.onboarding.llm_binding?.state === 'failed'"> · {{ t('admin.fde.llmBindingFailed') }}</span>
                     </span>
-                    <button
+                    <ElButton
                       v-if="!user.offboarding && (user.onboarding?.state === 'failed' || user.onboarding?.llm_binding?.state === 'failed')"
-                      type="button"
+                      native-type="button"
                       data-test="retry-onboarding"
                       class="ml-1 rounded border border-black/15 px-1 py-0.5 text-xs hover:bg-black/5 disabled:opacity-50"
                       :disabled="onboardingBusyId !== null"
-                      @click.stop="retryOnboarding(user)"
-                    >{{ t('admin.fde.retryOnboarding') }}</button>
+                      @click.stop="retryOnboarding(user as AdminUser)"
+                    >{{ t('admin.fde.retryOnboarding') }}</ElButton>
                   </div>
                   <div
                     v-if="user.offboarding"
@@ -652,67 +617,58 @@ onBeforeUnmount(() => {
                     <span v-if="user.offboarding.workspace_purge_after">
                       · {{ t('admin.fde.workspacePurgeAfter', { date: formatLastLogin(user.offboarding.workspace_purge_after) }) }}
                     </span>
-                    <button
+                    <ElButton
                       v-if="user.offboarding.state === 'failed'"
-                      type="button"
+                      native-type="button"
                       data-test="retry-offboarding"
                       class="ml-1 rounded border border-black/15 px-1 py-0.5 text-xs hover:bg-black/5 disabled:opacity-50"
                       :disabled="offboardingBusyId !== null"
-                      @click.stop="retryOffboarding(user)"
-                    >{{ t('admin.fde.retryOffboarding') }}</button>
+                      @click.stop="retryOffboarding(user as AdminUser)"
+                    >{{ t('admin.fde.retryOffboarding') }}</ElButton>
                   </div>
                   <span v-if="!user.onboarding && !user.offboarding" class="text-black/35">—</span>
-                </td>
-                <td class="truncate px-3 py-2.5" :title="formatLastLogin(user.last_login_at)">
+                </template></ElTableColumn>
+        <ElTableColumn :label="t('admin.fde.lastLogin')" min-width="175"><template #default="{ row: user }">
                   {{ formatLastLogin(user.last_login_at) }}
-                </td>
-                <td class="px-2 py-2">
+                </template></ElTableColumn>
+        <ElTableColumn :label="t('admin.fde.colActions')" min-width="220"><template #default="{ row: user }">
                   <div class="flex flex-wrap items-center justify-end gap-1">
-                    <button
+                    <ElButton
                       v-if="!user.offboarding"
-                      type="button"
+                      native-type="button"
                       class="rounded-md border border-black/15 px-2 py-1 text-xs hover:bg-black/5 disabled:opacity-50"
                       :disabled="busyUserId !== null"
                       :aria-label="user.status === 'disabled' ? t('admin.fde.enableUser') : t('admin.fde.disableUser')"
-                      @click.stop="toggleStatus(user)"
-                    >{{ user.status === 'disabled' ? t('admin.fde.enableUser') : t('admin.fde.disableUser') }}</button>
-                    <button
-                      type="button"
+                      @click.stop="toggleStatus(user as AdminUser)"
+                    >{{ user.status === 'disabled' ? t('admin.fde.enableUser') : t('admin.fde.disableUser') }}</ElButton>
+                    <ElButton
+                      native-type="button"
                       data-test="edit-user"
                       class="rounded-md border border-black/15 px-2 py-1 text-xs hover:bg-black/5"
-                      @click.stop="openEditModal(user)"
-                    >{{ t('admin.fde.editAction') }}</button>
-                    <button
+                      @click.stop="openEditModal(user as AdminUser)"
+                    >{{ t('admin.fde.editAction') }}</ElButton>
+                    <ElButton
                       v-if="!user.offboarding"
-                      type="button" data-test="delete-member"
+                      native-type="button" data-test="delete-member"
                       class="rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-50"
-                      :disabled="isCurrentUser(user) || busyUserId !== null"
-                      @click.stop="openDeleteModal(user)"
-                    >{{ t('admin.fde.deleteUser') }}</button>
+                      :disabled="isCurrentUser(user as AdminUser) || busyUserId !== null"
+                      @click.stop="openDeleteModal(user as AdminUser)"
+                    >{{ t('admin.fde.deleteUser') }}</ElButton>
                   </div>
-                </td>
-              </tr>
-              <tr v-if="rowErrors[user.id] || rowMessages[user.id]" class="border-b border-black/10">
-                <td colspan="9" class="px-3 py-1.5 text-xs">
-                  <p v-if="rowErrors[user.id]" class="syserr" role="alert">{{ rowErrors[user.id] }}</p>
-                  <p v-else class="text-green-700" role="status">{{ rowMessages[user.id] }}</p>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
+                </template></ElTableColumn>
+      </ElTable>
     </div>
   </section>
 
   <ModalShell v-if="showAddUser" :label="t('admin.fde.addUserTitle')" @close="closeAddUser">
     <div class="flex items-center gap-2 border-b border-black/10 px-3 py-2">
       <h2 class="text-sm font-medium">{{ t('admin.fde.addUserTitle') }}</h2>
-      <button
-        type="button"
+      <ElButton
+        native-type="button"
         :aria-label="t('common.close')"
         class="ml-auto shrink-0 rounded-md px-2 py-1 text-sm hover:bg-black/5"
         @click="closeAddUser"
-      >✕</button>
+      >✕</ElButton>
     </div>
     <form data-test="add-user-form" class="grid gap-3 px-3 py-3" @submit.prevent="onAddUser">
       <label class="flex flex-col gap-1 text-xs text-black/55">
@@ -735,12 +691,12 @@ onBeforeUnmount(() => {
             :placeholder="t('admin.fde.createPasswordPlaceholder')"
             class="min-w-0 flex-1 rounded-md border border-black/20 px-2 py-1 text-sm text-black"
           >
-          <button
-            type="button"
+          <ElButton
+            native-type="button"
             data-test="generate-password"
             class="shrink-0 rounded-md border border-black/20 px-2 py-1 text-sm text-black hover:bg-black/5"
             @click="fillRandomPassword"
-          >{{ t('admin.fde.randomPassword') }}</button>
+          >{{ t('admin.fde.randomPassword') }}</ElButton>
         </div>
       </div>
       <label class="flex flex-col gap-1 text-xs text-black/55">
@@ -763,9 +719,9 @@ onBeforeUnmount(() => {
         <h3 class="text-xs font-medium text-black/70">{{ t('admin.fde.llmModelSection') }}</h3>
         <p v-if="admin.llmErr" class="syserr" role="alert">
           {{ t('admin.fde.llmCatalogError', { error: admin.llmErr }) }}
-          <button type="button" class="ml-1 underline" @click="admin.loadProviders()">
+          <ElButton native-type="button" class="ml-1 underline" @click="admin.loadProviders()">
             {{ t('admin.fde.retryLlmCatalog') }}
-          </button>
+          </ElButton>
         </p>
         <p v-else-if="!admin.providersLoaded" class="text-xs text-black/55" role="status">
           {{ t('admin.fde.loadingLlmCatalog') }}
@@ -844,16 +800,16 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="admin.fdeErr" class="syserr" role="alert">{{ admin.fdeErr }}</p>
       <div class="flex gap-2">
-        <button
-          type="submit"
+        <ElButton type="primary"
+          native-type="submit"
           :disabled="!canSubmitAddUser"
           class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover disabled:opacity-50"
-        >{{ t('admin.fde.addUser') }}</button>
-        <button
-          type="button"
+        >{{ t('admin.fde.addUser') }}</ElButton>
+        <ElButton
+          native-type="button"
           class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5"
           @click="closeAddUser"
-        >{{ t('common.cancel') }}</button>
+        >{{ t('common.cancel') }}</ElButton>
       </div>
     </form>
   </ModalShell>
@@ -895,35 +851,35 @@ onBeforeUnmount(() => {
         <div class="mb-1">{{ t('admin.fde.otpauthUri') }}</div>
         <div class="flex items-start gap-2">
           <code class="min-w-0 flex-1 break-all select-all">{{ admin.totpOnce.uri }}</code>
-          <button
-            type="button"
+          <ElButton
+            native-type="button"
             data-test="copy-totp-uri"
             class="shrink-0 rounded border border-black/20 px-2 py-1 text-xs hover:bg-black/5"
             @click="copyTotpValue('uri', admin.totpOnce.uri)"
-          >{{ copiedTotpValue === 'uri' ? t('common.copied') : t('common.copy') }}</button>
+          >{{ copiedTotpValue === 'uri' ? t('common.copied') : t('common.copy') }}</ElButton>
         </div>
       </div>
       <div>
         <div class="mb-1">{{ t('admin.fde.totpSecret') }}</div>
         <div class="flex items-start gap-2">
           <code class="min-w-0 flex-1 break-all select-all">{{ admin.totpOnce.secret }}</code>
-          <button
-            type="button"
+          <ElButton
+            native-type="button"
             data-test="copy-totp-secret"
             class="shrink-0 rounded border border-black/20 px-2 py-1 text-xs hover:bg-black/5"
             @click="copyTotpValue('secret', admin.totpOnce.secret)"
-          >{{ copiedTotpValue === 'secret' ? t('common.copied') : t('common.copy') }}</button>
+          >{{ copiedTotpValue === 'secret' ? t('common.copied') : t('common.copy') }}</ElButton>
         </div>
       </div>
       <p v-if="totpCopyError" class="syserr" role="alert">{{ totpCopyError }}</p>
       <p>{{ t('admin.fde.nextStep') }}</p>
       <p v-if="copiedTotpValue" class="text-sm text-green-700" role="status">{{ t('admin.fde.copiedFeedback') }}</p>
-      <button
-        type="button"
+      <ElButton type="primary"
+        native-type="button"
         data-test="totp-saved"
         class="w-full rounded-md bg-brand px-2.5 py-2 text-sm text-white hover:bg-brand-hover"
         @click="closeTotp"
-      >{{ t('admin.fde.totpSaved') }}</button>
+      >{{ t('admin.fde.totpSaved') }}</ElButton>
     </div>
   </ModalShell>
 
@@ -939,17 +895,17 @@ onBeforeUnmount(() => {
         <h2 class="truncate text-sm font-medium">{{ t('admin.fde.editUserTitle') }}</h2>
         <p class="truncate text-xs text-black/55">{{ editUser.login }}</p>
       </div>
-      <button
-        type="button"
+      <ElButton
+        native-type="button"
         :aria-label="t('common.close')"
         class="ml-auto shrink-0 rounded-md px-2 py-1 text-sm hover:bg-black/5"
         @click="closeEditModal"
-      >✕</button>
+      >✕</ElButton>
     </header>
     <div role="tablist" class="flex shrink-0 flex-wrap gap-1 border-b border-black/10 px-3 py-2">
-      <button
+      <ElButton
         id="edit-tab-profile"
-        type="button"
+        native-type="button"
         role="tab"
         data-test="edit-tab-profile"
         :aria-selected="editTab === 'profile'"
@@ -957,10 +913,10 @@ onBeforeUnmount(() => {
         :class="editTab === 'profile' ? 'border-black/30 bg-black/5 font-medium' : 'border-transparent hover:bg-black/5'"
         class="rounded-md border px-2.5 py-1.5 text-sm"
         @click="editTab = 'profile'"
-      >{{ t('admin.fde.editTabProfile') }}</button>
-      <button
+      >{{ t('admin.fde.editTabProfile') }}</ElButton>
+      <ElButton
         id="edit-tab-security"
-        type="button"
+        native-type="button"
         role="tab"
         data-test="edit-tab-security"
         :aria-selected="editTab === 'security'"
@@ -968,10 +924,10 @@ onBeforeUnmount(() => {
         :class="editTab === 'security' ? 'border-black/30 bg-black/5 font-medium' : 'border-transparent hover:bg-black/5'"
         class="rounded-md border px-2.5 py-1.5 text-sm"
         @click="editTab = 'security'"
-      >{{ t('admin.fde.editTabSecurity') }}</button>
-      <button
+      >{{ t('admin.fde.editTabSecurity') }}</ElButton>
+      <ElButton
         id="edit-tab-llm"
-        type="button"
+        native-type="button"
         role="tab"
         data-test="edit-tab-llm"
         :aria-selected="editTab === 'llm'"
@@ -979,10 +935,10 @@ onBeforeUnmount(() => {
         :class="editTab === 'llm' ? 'border-black/30 bg-black/5 font-medium' : 'border-transparent hover:bg-black/5'"
         class="rounded-md border px-2.5 py-1.5 text-sm"
         @click="editTab = 'llm'"
-      >{{ t('admin.fde.editTabLlm') }}</button>
-      <button
+      >{{ t('admin.fde.editTabLlm') }}</ElButton>
+      <ElButton
         id="edit-tab-ports"
-        type="button"
+        native-type="button"
         role="tab"
         data-test="edit-tab-ports"
         :aria-selected="editTab === 'ports'"
@@ -990,10 +946,10 @@ onBeforeUnmount(() => {
         :class="editTab === 'ports' ? 'border-black/30 bg-black/5 font-medium' : 'border-transparent hover:bg-black/5'"
         class="rounded-md border px-2.5 py-1.5 text-sm"
         @click="openPortsTab"
-      >{{ t('admin.fde.editTabPorts') }}</button>
-      <button
+      >{{ t('admin.fde.editTabPorts') }}</ElButton>
+      <ElButton
         id="edit-tab-danger"
-        type="button"
+        native-type="button"
         role="tab"
         data-test="edit-tab-danger"
         :aria-selected="editTab === 'danger'"
@@ -1001,7 +957,7 @@ onBeforeUnmount(() => {
         :class="editTab === 'danger' ? 'border-black/30 bg-black/5 font-medium' : 'border-transparent hover:bg-black/5'"
         class="rounded-md border px-2.5 py-1.5 text-sm"
         @click="editTab = 'danger'"
-      >{{ t('admin.fde.editTabDanger') }}</button>
+      >{{ t('admin.fde.editTabDanger') }}</ElButton>
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto p-3">
@@ -1033,11 +989,11 @@ onBeforeUnmount(() => {
           </label>
           <p v-if="profileError" class="syserr" role="alert">{{ profileError }}</p>
           <p v-if="profileMessage" class="text-sm text-green-700" role="status">{{ profileMessage }}</p>
-          <button
-            type="submit"
+          <ElButton type="primary"
+            native-type="submit"
             :disabled="profileBusy"
             class="justify-self-end rounded-md bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-50"
-          >{{ t('admin.fde.updateProfile') }}</button>
+          >{{ t('admin.fde.updateProfile') }}</ElButton>
         </form>
         <section v-if="editUser?.onboarding" data-test="profile-onboarding" class="mt-4 grid gap-2 border-t border-black/10 pt-3 text-sm">
           <h4 class="font-semibold">{{ t('admin.fde.colOnboarding') }}</h4>
@@ -1045,14 +1001,14 @@ onBeforeUnmount(() => {
           <p v-if="editUser.onboarding.error" class="break-words text-red-700" :title="editUser.onboarding.error">
             {{ editUser.onboarding.error }}
           </p>
-          <button
+          <ElButton
             v-if="editUser.onboarding.state === 'failed' && !editUser.offboarding"
-            type="button"
+            native-type="button"
             data-test="retry-onboarding-profile"
             class="justify-self-start rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5 disabled:opacity-50"
             :disabled="onboardingBusyId !== null"
             @click="retryOnboarding(editUser)"
-          >{{ t('admin.fde.retryOnboarding') }}</button>
+          >{{ t('admin.fde.retryOnboarding') }}</ElButton>
         </section>
         <section v-if="editUser?.offboarding" data-test="profile-offboarding" class="mt-4 grid gap-2 border-t border-black/10 pt-3 text-sm">
           <h4 class="font-semibold">{{ t('admin.fde.offboardingTitle') }}</h4>
@@ -1065,14 +1021,14 @@ onBeforeUnmount(() => {
           <p v-if="editUser.offboarding.error" class="break-words text-red-700" :title="editUser.offboarding.error">
             {{ editUser.offboarding.error }}
           </p>
-          <button
+          <ElButton
             v-if="editUser.offboarding.state === 'failed'"
-            type="button"
+            native-type="button"
             data-test="retry-offboarding-profile"
             class="justify-self-start rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5 disabled:opacity-50"
             :disabled="offboardingBusyId !== null"
             @click="retryOffboarding(editUser)"
-          >{{ t('admin.fde.retryOffboarding') }}</button>
+          >{{ t('admin.fde.retryOffboarding') }}</ElButton>
         </section>
       </section>
 
@@ -1095,11 +1051,11 @@ onBeforeUnmount(() => {
             </label>
             <p v-if="passwordError" class="syserr" role="alert">{{ passwordError }}</p>
             <p v-if="passwordMessage" class="text-sm text-green-700" role="status">{{ passwordMessage }}</p>
-            <button
-              type="submit"
+            <ElButton
+              native-type="submit"
               :disabled="passwordBusy"
               class="justify-self-end rounded-md border border-black/20 px-3 py-1.5 text-sm hover:bg-black/5 disabled:opacity-50"
-            >{{ t('admin.fde.submitPasswordReset') }}</button>
+            >{{ t('admin.fde.submitPasswordReset') }}</ElButton>
           </form>
         </section>
 
@@ -1113,21 +1069,21 @@ onBeforeUnmount(() => {
           <p v-if="totpError" class="syserr mt-2" role="alert">{{ totpError }}</p>
           <p v-if="totpMessage" class="mt-2 text-sm text-green-700" role="status">{{ totpMessage }}</p>
           <div class="mt-3 flex flex-wrap justify-end gap-2">
-            <button
-              type="button"
+            <ElButton type="primary"
+              native-type="button"
               data-test="confirm-totp-enroll"
               :disabled="totpBusy"
               class="rounded-md bg-brand px-3 py-1.5 text-sm text-white hover:bg-brand-hover disabled:opacity-50"
               @click="confirmTotpEnroll"
-            >{{ editUser.totp_enabled ? t('admin.fde.reenrollTotp') : t('admin.fde.enrollTotp') }}</button>
-            <button
+            >{{ editUser.totp_enabled ? t('admin.fde.reenrollTotp') : t('admin.fde.enrollTotp') }}</ElButton>
+            <ElButton type="danger"
               v-if="editUser.totp_enabled"
-              type="button"
+              native-type="button"
               data-test="confirm-totp-reset"
               :disabled="totpBusy"
               class="rounded-md bg-red-700 px-3 py-1.5 text-sm text-white hover:bg-red-800 disabled:opacity-50"
               @click="confirmTotpReset"
-            >{{ t('admin.fde.confirmTotpReset') }}</button>
+            >{{ t('admin.fde.confirmTotpReset') }}</ElButton>
           </div>
         </section>
       </section>
@@ -1183,13 +1139,13 @@ onBeforeUnmount(() => {
         class="rounded-lg border border-red-200 bg-red-50/50 p-3"
       >
         <h3 class="mb-2 font-semibold text-red-800">{{ t('admin.fde.dangerSection') }}</h3>
-        <button
+        <ElButton
           v-if="!isCurrentUser(editUser)"
-          type="button"
+          native-type="button"
           data-test="open-user-delete"
           class="rounded-md px-2.5 py-1.5 text-sm text-red-700 underline hover:bg-red-100"
           @click="openDeleteModal(editUser)"
-        >{{ t('admin.fde.deleteUser') }}</button>
+        >{{ t('admin.fde.deleteUser') }}</ElButton>
       </section>
     </div>
   </ModalShell>
@@ -1203,12 +1159,12 @@ onBeforeUnmount(() => {
   >
     <header class="flex items-center gap-3 border-b border-black/10 px-3 py-2">
       <h2 class="text-sm font-medium">{{ t('admin.fde.deleteUserTitle') }}</h2>
-      <button
-        type="button"
+      <ElButton
+        native-type="button"
         :aria-label="t('common.close')"
         class="ml-auto shrink-0 rounded-md px-2 py-1 text-sm hover:bg-black/5"
         @click="closeDeleteModal"
-      >✕</button>
+      >✕</ElButton>
     </header>
     <form class="grid gap-3 p-3" @submit.prevent="confirmUserDelete">
       <p class="text-sm text-black/65">{{ t('admin.fde.deleteUserHint', { login: deleteUser.login }) }}</p>
@@ -1224,13 +1180,13 @@ onBeforeUnmount(() => {
       </label>
       <p v-if="deleteError" class="syserr" role="alert">{{ deleteError }}</p>
       <div class="flex justify-end gap-2">
-        <button type="button" class="rounded-md border border-black/20 px-3 py-1.5 text-sm" @click="closeDeleteModal">{{ t('common.cancel') }}</button>
-        <button
-          type="submit"
+        <ElButton native-type="button" class="rounded-md border border-black/20 px-3 py-1.5 text-sm" @click="closeDeleteModal">{{ t('common.cancel') }}</ElButton>
+        <ElButton type="danger"
+          native-type="submit"
           data-test="confirm-user-delete"
           :disabled="!deleteMatchesLogin || deleteBusy || isCurrentUser(deleteUser)"
           class="rounded-md bg-red-700 px-3 py-1.5 text-sm text-white hover:bg-red-800 disabled:opacity-50"
-        >{{ t('admin.fde.confirmDeleteUser') }}</button>
+        >{{ t('admin.fde.confirmDeleteUser') }}</ElButton>
       </div>
     </form>
   </ModalShell>

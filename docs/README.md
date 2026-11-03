@@ -11,6 +11,7 @@
 
 | 文档 | 内容 | 状态 |
 |---|---|---|
+| [`design/shared-project-collaboration.md`](design/shared-project-collaboration.md) | 项目邀请、个人分支、Gitea PR、撤权与成果保留 | 方案，未实施协作功能 |
 | [`ops/inteva-sso.md`](ops/inteva-sso.md) | INTEVA SSO 登录、Gitea 自动开户与统一 LiteLLM 个人 key | 实现与部署验证 |
 | [`design/managed-delivery-quota.md`](design/managed-delivery-quota.md) | 管理员交付包下发及个人每日 Token 配额 | INTEVA 扩展 |
 | [`ops/gitea-release.md`](ops/gitea-release.md) | 私有 Gitea 主分支自动测试、构建、发布与回退 | 内部发布 |

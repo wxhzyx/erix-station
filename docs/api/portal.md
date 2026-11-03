@@ -2951,3 +2951,10 @@ Clears `totp_secret` and `last_totp_step`, then revokes every unrevoked login se
 ### `POST /api/admin/users/:id/totp-enroll`
 
 Creates a new 20-byte TOTP seed for an existing user (replacing any previous binding), clears `last_totp_step`, and atomically revokes every unrevoked login session. Returns `{ "user": <safe user>, "totp_secret": "...", "totp_uri": "otpauth://..." }`; the seed is shown only in this response and never appears in user listings or later endpoints. A missing user returns `404 not_found`; a non-admin session returns `403 forbidden`.
+
+
+### 管理台实际运行端口（2026-11-03）
+
+`GET /api/admin/preview-ports/runtime`，仅管理员。响应 `{sampled_at, freshness_seconds:45, total, limit:500, items}`；items 包含 `id,user_id,login,display_name,project,port,branch,routed,observed_at`。
+仅返回 active、未删除用户的 running、未吊销容器在最近 45 秒内的监听；保留已分配端口和项目目录下的池外端口。project 从观测 cwd 提取，未知为 null。routed 表示存在未释放 allocation，不承诺应用 HTTP 健康，也不授予访问权限。无命令行、token、直连 URL。
+按账号、端口、观测 ID 排序，最多 500 条，total 超过 limit 时前端明确截断。查询失败返回错误，不以空列表掩盖。审计 `admin.runtime_ports_listed` 仅记录计数。原 `/usage` 分配号池 API 继续服务成员端口搬迁表单；运行页不再展示预留段。

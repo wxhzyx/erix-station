@@ -585,3 +585,19 @@ test('#256④b ?limit= 合法时生效、非法时 400 validation_failed + detai
     await close();
   }
 });
+
+
+test('runtime listener overview is admin-only and audits only counts', async () => {
+  const store = { async query(sql) { if (sql.includes('FROM port_observations o')) return {rows:[]}; return null; } };
+  const {base,adminCookie,aliceCookie,pool,close}=await startUsageServer({store});
+  try {
+    const denied=await fetch(`${base}/api/admin/preview-ports/runtime`,{headers:{cookie:aliceCookie}});
+    assert.equal(denied.status,403);assert.equal(pool.audit.length,0);
+    const ok=await fetch(`${base}/api/admin/preview-ports/runtime`,{headers:{cookie:adminCookie}});
+    assert.equal(ok.status,200);assert.deepEqual((await ok.json()).items,[]);
+    assert.equal(pool.audit.at(-1).action,'admin.runtime_ports_listed');
+    assert.deepEqual(JSON.parse(pool.audit.at(-1).details),{item_count:0,total:0});
+    const method=await fetch(`${base}/api/admin/preview-ports/runtime`,{method:'POST',headers:{cookie:adminCookie,origin:base}});
+    assert.equal(method.status,405);
+  } finally {await close();}
+});

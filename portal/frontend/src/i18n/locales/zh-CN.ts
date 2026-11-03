@@ -567,7 +567,7 @@ export const zhCN = {
       blockTakenHint: '该段已被占用（服务端不会自动换段）：换一个整块空闲的对齐起点后重试。',
       // issue #350：改块区接上「号池占用总览」（引用式：本面板**不**因看到空闲段就改输入框/自动提交）
       usageRefHint: '选段前先看号池占用总览：哪几段被谁占、哪几段整段空闲。',
-      usageRefLink: '打开号池占用总览',
+      usageRefLink: '检查分配占用',
       occupancyTitle: '最近一次总览里这一段：',
       occupancyOccupied: '被占用（占用者：{names}；{count} 个活行）——改块会被服务端拒绝（409），请换一段。',
       occupancyOccupiedNoCount: '被占用（占用者：{names}）——改块会被服务端拒绝（409），请换一段。',

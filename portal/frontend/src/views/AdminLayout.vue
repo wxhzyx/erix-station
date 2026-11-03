@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton, ElMenu, ElMenuItem } from 'element-plus';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
@@ -22,7 +23,7 @@ const groups = computed(() => [
     { path: '/admin/llm', label: en.value ? 'API & models' : 'API 与模型', hint: en.value ? 'Providers, credentials and models' : '统一管理 API 接入与模型目录' },
     { path: '/admin/model-access', label: en.value ? 'Model assignments' : '用户模型分配', hint: en.value ? 'Assign chat and work models' : '为成员配置聊天与开发模型' },
     { path: '/admin/repos', label: en.value ? 'Repositories' : '仓库接入', hint: en.value ? 'Repository connections' : '代码仓库连接与配置' },
-    { path: '/admin/preview-pool', label: en.value ? 'Preview resources' : '预览资源', hint: en.value ? 'Preview port allocation' : '预览端口分配与占用' },
+    { path: '/admin/preview-pool', label: en.value ? 'Running ports' : '运行端口', hint: en.value ? 'Users, projects and listeners' : '用户、项目与实际监听端口' },
   ] },
 ]);
 const current = computed(() => groups.value.flatMap(g => g.items).find(i => i.path === route.path));
@@ -31,10 +32,16 @@ async function onLogout() { await auth.logout(); await router.replace('/login');
 <template>
   <StationShell area="admin">
     <div class="station-admin console-page">
-      <header class="station-header"><div><span class="page-eyebrow">ORGANIZATION / ADMIN</span><h1>{{ t('admin.title') }}</h1></div><div class="header-actions"><span class="status-pill">{{ en ? 'Administrator' : '管理员' }}</span><button class="station-secondary" @click="onLogout">{{ t('common.logout') }}</button></div></header>
+      <header class="station-header"><h1>{{ t('admin.title') }}</h1><ElButton @click="onLogout">{{ t('common.logout') }}</ElButton></header>
       <div class="admin-layout">
-        <nav class="admin-navigation" :aria-label="t('admin.tabs.label')"><div v-for="group in groups" :key="group.label" class="admin-nav-group"><h2>{{ group.label }}</h2><router-link v-for="item in group.items" :key="item.path" :to="item.path" :class="{ active: route.path === item.path }" :aria-current="route.path === item.path ? 'page' : undefined">{{ item.label }}</router-link></div></nav>
-        <main class="console-content admin-content"><div v-if="current" class="page-intro"><h2>{{ current.label }}</h2><p>{{ current.hint }}</p></div><router-view :key="route.path" /></main>
+        <nav class="admin-navigation" :aria-label="t('admin.tabs.label')">
+          <ElMenu mode="horizontal" :default-active="route.path" :ellipsis="false">
+            <ElMenuItem v-for="item in groups.flatMap(group => group.items)" :key="item.path" :index="item.path">
+              <router-link :to="item.path" :aria-current="route.path === item.path ? 'page' : undefined">{{ item.label }}</router-link>
+            </ElMenuItem>
+          </ElMenu>
+        </nav>
+        <main class="console-content admin-content"><div v-if="current" class="page-intro"><h2>{{ current.label }}</h2></div><router-view :key="route.path" /></main>
       </div>
     </div>
   </StationShell>

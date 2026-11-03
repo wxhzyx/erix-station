@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '../api';
@@ -51,16 +52,16 @@ defineExpose({ refresh: load });
 </script>
 <template>
   <div class="approval-panel space-y-4">
-    <div class="flex items-center justify-between gap-3"><h2 class="font-semibold">{{ versions ? (en ? 'Merged versions' : '合并版本') : (en ? 'Project approvals' : '项目审批') }}</h2><button class="station-secondary rounded-lg px-3 py-1.5 text-sm" :disabled="loading || acting" @click="load">{{ loading ? (en ? 'Loading…' : '加载中…') : (en ? 'Refresh' : '刷新') }}</button></div>
+    <div class="flex items-center justify-between gap-3"><h2 class="font-semibold">{{ versions ? (en ? 'Merged versions' : '合并版本') : (en ? 'Project approvals' : '项目审批') }}</h2><ElButton native-type="submit" class="station-secondary rounded-lg px-3 py-1.5 text-sm" :disabled="loading || acting" @click="load">{{ loading ? (en ? 'Loading…' : '加载中…') : (en ? 'Refresh' : '刷新') }}</ElButton></div>
     <p v-if="error" role="alert" class="text-sm text-red-700">{{ error }}</p>
     <p v-if="!loading && !visible.length" class="py-8 text-center text-sm text-black/50">{{ versions ? (en ? 'No merged versions' : '暂无合并版本') : (en ? 'No approval requests' : '暂无审批') }}</p>
     <p v-if="hasMore" class="text-xs text-black/50">{{ en ? 'Showing the latest 100 requests' : '显示最近 100 条记录' }}</p>
     <div v-if="visible.length" class="approval-grid">
       <div class="space-y-2" :aria-label="en ? 'Approval requests' : '审批列表'">
-        <button v-for="item in visible" :key="item.id" class="approval-row w-full rounded-xl border p-3 text-left" :class="selected?.id === item.id ? 'border-brand bg-green-50/50' : 'border-black/10 bg-white'" :disabled="acting || loading" @click="select(item)">
+        <ElButton native-type="submit" v-for="item in visible" :key="item.id" class="approval-row w-full rounded-xl border p-3 text-left" :class="selected?.id === item.id ? 'border-brand bg-green-50/50' : 'border-black/10 bg-white'" :disabled="acting || loading" @click="select(item)">
           <span class="block truncate text-sm font-medium">{{ item.repository || item.cwd.split('/').pop() }}</span><span class="mt-1 block break-all text-xs text-black/60">{{ item.source_ref }} → {{ item.target_ref }}</span><span class="mt-2 block text-xs text-brand">{{ approvalStatus(item.status, en) }}</span>
           <template v-if="versions"><code class="mt-2 block text-xs">{{ item.merge_sha?.slice(0,12) }}</code><span class="text-xs text-black/50">{{ en ? 'Deployment unverified' : '上线状态未确认' }}</span></template>
-        </button>
+        </ElButton>
       </div>
       <article v-if="selected" :aria-busy="loadingDetail" class="min-w-0 space-y-4 rounded-xl border border-black/10 bg-white p-4">
         <header class="flex flex-wrap items-center justify-between gap-2"><h3 class="font-semibold">{{ selected.repository }}</h3><span class="text-xs text-brand">{{ approvalStatus(selected.status, en) }}</span></header>
@@ -71,12 +72,12 @@ defineExpose({ refresh: load });
         <section><h4 class="mb-2 text-sm font-semibold">{{ en ? 'Changes' : '代码差异' }}</h4><pre class="approval-diff max-h-96 overflow-auto rounded-lg bg-slate-950 p-3 text-xs leading-6 text-slate-100">{{ loadingDetail ? (en ? 'Loading diff…' : '加载差异…') : selected.diff || (en ? 'No diff available' : '暂无差异') }}</pre></section>
         <section v-if="selected.ai_review"><h4 class="mb-2 text-sm font-semibold">{{ en ? 'AI review · advisory' : 'AI 审查 · 仅供参考' }}</h4><p class="whitespace-pre-wrap break-words text-sm leading-7">{{ selected.ai_review }}</p></section>
         <div v-if="admin && !loadingDetail && !loading" class="space-y-3 border-t border-black/10 pt-4">
-          <button v-if="['pending','failed'].includes(selected.status) || (selected.status === 'reviewing' && selected.can_retry_review)" class="station-primary rounded-lg px-4 py-2 text-sm text-white disabled:opacity-50" :disabled="acting" @click="act('review')">{{ acting ? (en ? 'Reviewing…' : '审查中…') : selected.status === 'reviewing' ? (en ? 'Retry review' : '重新审查') : (en ? 'Run AI review' : '运行 AI 审查') }}</button>
+          <ElButton native-type="submit" v-if="['pending','failed'].includes(selected.status) || (selected.status === 'reviewing' && selected.can_retry_review)" class="station-primary rounded-lg px-4 py-2 text-sm text-white disabled:opacity-50" :disabled="acting" @click="act('review')">{{ acting ? (en ? 'Reviewing…' : '审查中…') : selected.status === 'reviewing' ? (en ? 'Retry review' : '重新审查') : (en ? 'Run AI review' : '运行 AI 审查') }}</ElButton>
           <template v-if="['reviewed','approved'].includes(selected.status)">
             <label class="flex items-start gap-2 text-sm"><input v-model="confirmed" type="checkbox" class="mt-1" :disabled="acting" /><span>{{ selected.status === 'approved' ? (en ? `Merge the reviewed commit into ${selected.target_ref}` : `将已审查的提交合并至 ${selected.target_ref}`) : (en ? 'I have checked the diff and AI review' : '我已核对代码差异与 AI 审查') }}</span></label>
-            <button class="station-primary rounded-lg px-4 py-2 text-sm text-white disabled:opacity-50" :disabled="acting || !confirmed || !reviewEvidenceReady" @click="act(selected.status === 'approved' ? 'merge' : 'approve')">{{ acting ? (en ? 'Processing…' : '处理中…') : selected.status === 'approved' ? (en ? 'Confirm merge' : '确认合并') : (en ? 'Approve' : '批准') }}</button>
+            <ElButton native-type="submit" class="station-primary rounded-lg px-4 py-2 text-sm text-white disabled:opacity-50" :disabled="acting || !confirmed || !reviewEvidenceReady" @click="act(selected.status === 'approved' ? 'merge' : 'approve')">{{ acting ? (en ? 'Processing…' : '处理中…') : selected.status === 'approved' ? (en ? 'Confirm merge' : '确认合并') : (en ? 'Approve' : '批准') }}</ElButton>
           </template>
-          <button v-if="selected.status === 'merging'" class="station-secondary rounded-lg px-4 py-2 text-sm disabled:opacity-50" :disabled="acting" @click="act('merge')">{{ en ? 'Check merge result' : '核对合并结果' }}</button>
+          <ElButton native-type="submit" v-if="selected.status === 'merging'" class="station-secondary rounded-lg px-4 py-2 text-sm disabled:opacity-50" :disabled="acting" @click="act('merge')">{{ en ? 'Check merge result' : '核对合并结果' }}</ElButton>
           <p v-if="selected.status === 'merging'" class="text-sm text-black/60">{{ en ? 'Merge pending confirmation. Refresh to reconcile; do not submit again.' : '合并结果待确认，请刷新核对，勿重复提交。' }}</p>
           <p v-if="selected.status === 'stale'" class="text-sm text-amber-700">{{ en ? 'The branches changed. Submit a new approval request.' : '分支已更新，请重新发起审批。' }}</p>
         </div>
