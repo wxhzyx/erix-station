@@ -87,6 +87,7 @@ async function review(id:string,approve:boolean) { await action(async()=>{
       <p>删除该项目的本地工作目录并归档会话，未推送的修改将丢失。保留 Gitea 仓库、提交历史和 LiteLLM 历史用量，不影响其他项目。正在执行的任务需要先停止。</p>
       <label>输入项目名称确认<input v-model="confirmation" data-test="project-delete-confirmation" :disabled="busy" autocomplete="off"></label>
       <p v-if="error" role="alert" class="error">{{error}}</p>
+      <button type="button" :disabled="busy" @click="deleting=null">取消</button>
       <button data-test="confirm-project-delete" :disabled="busy || confirmation!==deleting.name">确认删除项目</button>
     </form>
   </ModalShell>
