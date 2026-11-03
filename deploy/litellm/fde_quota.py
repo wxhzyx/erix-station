@@ -5,6 +5,8 @@ outcomes retain their reservation until the next day; restarting never forgives
 usage. No request text, provider key, or virtual key is stored here.
 """
 import asyncio
+import base64
+import binascii
 import hmac
 import json
 import os
@@ -18,6 +20,10 @@ from litellm.integrations.custom_logger import CustomLogger
 DEFAULT_LIMIT = 2_000_000
 MODEL = "fde-station-deepseek-flash"
 TEAM = os.environ.get("FDE_QUOTA_TEAM_ID", "")
+# Trusted deployment contract: this FDE alias has a 131072-token context window.
+# Reserve the full window for image requests instead of guessing visual tokens
+# from compressed bytes. Actual provider usage releases the unused reservation.
+IMAGE_CONTEXT_BOUNDS = {"fde-station-qwen3.8-flash-next": 131072}
 SHANGHAI = timezone(timedelta(hours=8))
 
 
@@ -85,20 +91,59 @@ class QuotaLedger:
 def prompt_upper_bound(data):
     messages = data.get("messages")
     if not isinstance(messages, list):
-        raise HTTPException(400, "FDE quota supports text chat completions only")
+        raise HTTPException(400, "FDE quota supports chat completions only")
+    normalized = []
+    image_count = 0
+    image_bytes = 0
     for message in messages:
         if not isinstance(message, dict):
             raise HTTPException(400, "invalid chat message")
         content = message.get("content")
-        if isinstance(content, list) and all(isinstance(block, dict) and block.get("type") == "text"
-                                             and isinstance(block.get("text"), str) for block in content):
+        message_images = 0
+        if isinstance(content, list):
+            blocks = []
+            for block in content:
+                if not isinstance(block, dict):
+                    raise HTTPException(400, "invalid content block")
+                if block.get("type") == "text" and isinstance(block.get("text"), str):
+                    blocks.append(block)
+                elif block.get("type") == "image_url":
+                    image = block.get("image_url")
+                    url = image.get("url") if isinstance(image, dict) else None
+                    if not isinstance(url, str) or not url.startswith(("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,")):
+                        raise HTTPException(400, "FDE images require inline PNG, JPEG or WebP data")
+                    encoded = url.split(",", 1)[1]
+                    if len(encoded) > 1398104:
+                        raise HTTPException(400, "FDE images are limited to 1 MiB each")
+                    try:
+                        raw = base64.b64decode(encoded, validate=True)
+                    except (ValueError, binascii.Error):
+                        raise HTTPException(400, "invalid image encoding") from None
+                    image_count += 1
+                    message_images += 1
+                    image_bytes += len(raw)
+                    if not raw or len(raw) > 1048576 or message_images > 5 or image_bytes > 8388608:
+                        raise HTTPException(400, "FDE image count or size limit exceeded")
+                    blocks.append({"type": "text", "text": "[image]"})
+                else:
+                    raise HTTPException(400, "unsupported FDE content block")
+            normalized.append({**message, "content": blocks})
             continue
         if content is not None and not isinstance(content, str):
-            raise HTTPException(400, "FDE quota currently supports text messages only")
+            raise HTTPException(400, "invalid chat content")
+        normalized.append(message)
     # DeepSeek text tokenizer is byte based. Serialized UTF-8 bytes plus generous
     # per-message framing reserve an upper bound; actual provider usage settles it.
-    serialized = json.dumps({k: data[k] for k in ("messages", "tools", "tool_choice", "response_format") if k in data}, ensure_ascii=False)
-    return len(serialized.encode("utf-8")) + 512 + 64 * len(messages)
+    payload = {k: data[k] for k in ("tools", "tool_choice", "response_format") if k in data}
+    payload["messages"] = normalized
+    serialized = json.dumps(payload, ensure_ascii=False)
+    bound = len(serialized.encode("utf-8")) + 512 + 64 * len(messages)
+    if image_count:
+        context_bound = IMAGE_CONTEXT_BOUNDS.get(data.get("model"))
+        if not context_bound:
+            raise HTTPException(400, "image quota is not configured for this model")
+        return max(bound, context_bound)
+    return bound
 
 
 class FdeQuota(CustomLogger):

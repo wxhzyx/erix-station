@@ -230,6 +230,7 @@ function toModel(model) {
     name: info.display_name ?? metadata.display_name ?? modelName,
     type,
     tool_calling: modelToolCalling(model),
+    supports_vision: (info.supports_vision ?? metadata.supports_vision ?? (type === 'vision')) === true,
     context_window: contextWindow,
     max_tokens: params.max_tokens ?? null,
     // issue #309 切片 1：模型「单次响应输出预算上限」的权威位是 `model_info.max_output_tokens`；

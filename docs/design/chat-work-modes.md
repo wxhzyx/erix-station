@@ -125,3 +125,27 @@ for the complete deployment. No fallback runs the parser in the portal process. 
 a bounded prefix of 200 PDF pages / 50 sheets / 100,000 cells / 200 slides,
 with truncation disclosed. Archive paths are never written to disk; DTD/entity
 content and macros/embedded objects are rejected, external relationships ignored.
+
+## Compact navigation and file drop (2026-11-03)
+
+Chat and work attachment controls share picker/drop validation and cancellation.
+Dropping files stages attachments; it never submits a message. Text drags are left
+to the browser; folder drops are rejected. Dropping outside the upload region must
+not navigate away. User-facing hints describe formats, with concrete errors and
+truncation warnings shown only when relevant.
+
+Chat image capability follows LiteLLM `model_info.supports_vision` (then metadata),
+independently of Station's text/vision classification. An explicit false is respected;
+legacy vision models without that flag retain support. Qwen may therefore remain a
+tool-calling text model while accepting original image bytes through `image_url`.
+This does not imply native PDF/Office support. Document text extraction remains the
+compatibility path; the current work `appendUserTurn` contract accepts text only.
+
+The FDE quota callback now accepts inline PNG/JPEG/WebP for the Qwen alias.
+It reserves the configured 131072-token context upper bound for the whole visual
+prompt, then settles actual provider usage. This reservation is temporary, not
+a flat image charge. Keep the trusted bound in sync before increasing that alias's
+context window. Unconfigured aliases, remote image URLs and unknown block types
+remain rejected; per-image 1 MiB, per-message 5 images, history 8 MiB limits apply.
+Only the internal gateway callback needs updating; cloud uplink accounting stays
+at the internal team boundary.

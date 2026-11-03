@@ -3,6 +3,7 @@
 // 失败回填输入与 llm_not_configured 409 指引在 store.send() 内（逐行平移）。
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useAuthStore } from '../stores/auth';
+import { useFileDrop } from '../lib/useFileDrop';
 import { readWorkFiles } from '../lib/workAttachments';
 import { useI18n } from 'vue-i18n';
 import { useWorkbenchStore } from '../stores/workbench';
@@ -13,19 +14,23 @@ const store = useWorkbenchStore();
 const auth = useAuthStore();
 const uploadError = ref('');
 const readingFiles = ref(false);
+const fileDrop = useFileDrop(addFiles, () => store.sendDisabled || readingFiles.value, message => { uploadError.value = message; });
 const attachmentLimitError = computed(() => store.pendingAttachments.length > 8
   || store.pendingAttachments.reduce((sum, file) => sum + new TextEncoder().encode(file.text).length, 0) > 262144
   ? '取回的文件超出单次发送限制（8 个 / 256 KiB）。文件仍保留，请移除部分附件后分批发送。' : '');
 let mounted = true;
 let readGeneration = 0;
 let readController = new AbortController();
-watch(() => [auth.user?.id, store.sessionId, store.dirCwd], () => { readGeneration++; readController.abort(); readController = new AbortController(); readingFiles.value = false; uploadError.value = ''; }, { flush: 'sync' });
+watch(() => [auth.user?.id, store.sessionId, store.dirCwd], () => { fileDrop.reset(); readGeneration++; readController.abort(); readController = new AbortController(); readingFiles.value = false; uploadError.value = ''; }, { flush: 'sync' });
 onBeforeUnmount(() => { mounted = false; readGeneration++; readController.abort(); });
 async function selectFiles(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files ?? []);
   input.value = '';
-  if (readingFiles.value || store.sendDisabled) return;
+  await addFiles(files);
+}
+async function addFiles(files: File[]) {
+  if (!files.length || readingFiles.value || store.sendDisabled) return;
   const generation = ++readGeneration;
   const owner = auth.user?.id;
   const sid = store.sessionId;
@@ -62,17 +67,18 @@ function onKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="work-input-area" :class="store.sessionId ? '' : 'border-t border-black/10'">
+  <div class="work-input-area file-drop-region" :class="[{ 'file-dragging': fileDrop.dragging.value }, store.sessionId ? '' : 'border-t border-black/10']" v-on="fileDrop.events">
+  <div v-if="fileDrop.dragging.value" class="file-drop-overlay" role="status">松开鼠标，添加附件</div>
   <div class="work-attachments px-4 pt-3 text-xs text-gray-600">
     <label class="station-secondary inline-flex cursor-pointer rounded-lg px-3 py-2">📎 上传文件
       <input aria-label="上传工作文件" type="file" multiple :disabled="store.sendDisabled || readingFiles" @change="selectFiles" class="sr-only" />
     </label>
-    <span class="ml-2">文本 / 代码 / PDF / DOCX / XLSX / PPTX · 最多 8 个 · 文档单个 8 MiB，提取文本单个 64 KiB / 总计 256 KiB（扫描 PDF 暂无 OCR）</span>
+    <span class="ml-2">拖入文件即可添加 · 支持文本、代码、PDF 和 Office · 最多 8 个</span>
     <div v-for="(file, index) in store.pendingAttachments" :key="index" class="inline-flex m-1 rounded bg-gray-100 px-2 py-1">
       {{ file.name }} <button :disabled="store.sendDisabled || readingFiles" class="ml-2" :aria-label="`移除 ${file.name}`" @click="store.pendingAttachments.splice(index, 1)">×</button>
     </div>
     <p v-for="warning in store.pendingAttachments.flatMap(file => (file.warnings ?? []).map(w => `${file.name}: ${w}`))" :key="warning" role="status" class="text-amber-700">{{ warning }}</p>
-    <p v-if="readingFiles" role="status">正在读取 / 解析文件…</p>
+    <p v-if="readingFiles" role="status">正在准备附件…</p>
     <p v-if="attachmentLimitError" role="alert" class="text-red-600">{{ attachmentLimitError }}</p>
     <p v-if="uploadError" role="alert" class="text-red-600">{{ uploadError }}</p>
   </div>

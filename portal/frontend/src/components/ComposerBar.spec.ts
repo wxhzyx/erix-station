@@ -1,7 +1,7 @@
 // ComposerBar i18n 单测（issue #101 P2）：发送/停止按钮与输入占位符三处用户可见文案，
 // 中文基线逐字不变 + 切 English 后即时变英文（占位符来自 store.inputPlaceholder 计算属性）。
 // 约定（照 LoginView.spec 先例）：装配真实 i18n 单例，不 mock t()；每例 localStorage.clear() + setLocale('zh-CN')。
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import ComposerBar from './ComposerBar.vue';
@@ -15,9 +15,12 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{"items":[]}', { status: 200 })));
 });
 
+const mountedWrappers: ReturnType<typeof mount>[] = [];
+afterEach(() => { for (const w of mountedWrappers) w.unmount(); mountedWrappers.length = 0; });
 function setup() {
   const store = useWorkbenchStore();
   const wrapper = mount(ComposerBar, { global: { plugins: [i18n] } });
+  mountedWrappers.push(wrapper);
   return { store, wrapper };
 }
 
@@ -252,4 +255,16 @@ it('discards work document extraction on directory navigation and aborts its req
   expect(store.pendingAttachments).toEqual([]);
   expect(wrapper.text()).not.toContain('private warning');
   wrapper.unmount();
+});
+
+
+it('drops work files into the composer without sending and respects disabled state', async () => {
+  const {store,wrapper}=setup();const send=vi.spyOn(store,'send');
+  const dataTransfer={types:['Files'],files:[{name:'drop.ts',size:10,arrayBuffer:async()=>new TextEncoder().encode('const x=1;').buffer}]};
+  await wrapper.get('textarea').trigger('drop',{dataTransfer});await flushPromises();
+  expect(store.pendingAttachments[0]).toMatchObject({name:'drop.ts',text:'const x=1;'});
+  expect(send).not.toHaveBeenCalled();
+  store.noDir=true;await flushPromises();
+  await wrapper.get('textarea').trigger('drop',{dataTransfer});await flushPromises();
+  expect(store.pendingAttachments).toHaveLength(1);
 });
