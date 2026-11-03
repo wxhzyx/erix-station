@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { validateAssignment, deleteAssignment, lockMemberProjects } from './managed-projects.js';
 import { stopSession } from './sessions.js';
-import { failure, segment, branchFor, protectionRules, loadCollaborationConfig, gitea, personalIdentity, applyProtections } from './collaboration-gitea.js';
+import { failure, segment, branchFor, protectionRules, loadCollaborationConfig, gitea, personalIdentity, applyProtections, withStationAuthors } from './collaboration-gitea.js';
 import { initializeRepository, prepareWorkspace } from './collaboration-workspace.js';
 
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -288,7 +288,7 @@ export async function collaborationApi(pool,config,user,{method,parts,body={}}) 
       if(!manage)requireActive();
       if(p.state!=='active'&&method!=='GET')throw failure('project_not_ready','项目不可操作');
       if(!parts[2]) {
-        if(method==='GET')return {pulls:await api('GET',`${rp}/pulls?state=all&limit=50`)};
+        if(method==='GET')return {pulls:await withStationAuthors(db,c,await api('GET',`${rp}/pulls?state=all&limit=50`))};
         if(method==='POST') {
           requireActive();
           if(typeof body.title!=='string'||!body.title.trim()||body.title.length>200||typeof(body.description??'')!=='string'||(body.description??'').length>10000)throw failure('validation_failed','请填写合并标题（最多 200 字）');
@@ -303,7 +303,7 @@ export async function collaborationApi(pool,config,user,{method,parts,body={}}) 
       const pp=`${rp}/pulls/${number}`,pr=await api('GET',pp);
       if(pr.base?.ref!=='main'||Number(pr.head?.repo?.id)!==Number(p.repo_id)||!ms.some(m=>m.branch===pr.head?.ref&&m.remote_login===pr.user?.login))throw failure('unmanaged_pr','此 PR 不属于受管个人分支');
       const main=await api('GET',`${rp}/branches/main`),target=main.commit.id??main.commit.sha;
-      if(method==='GET')return {pr,target_sha:target,diff:await api('GET',`${pp}.diff`,undefined,{text:true}),reviews:await api('GET',`${pp}/reviews`)};
+      if(method==='GET')return {pr:(await withStationAuthors(db,c,[pr]))[0],target_sha:target,diff:await api('GET',`${pp}.diff`,undefined,{text:true}),reviews:await withStationAuthors(db,c,await api('GET',`${pp}/reviews`))};
       if(pr.state!=='open'||pr.merged)throw failure('pr_closed','合并请求已经关闭');
       if(body.source_sha!==pr.head.sha||body.target_sha!==target)throw failure('review_outdated','代码已更新，请刷新差异并重新审核');
       const sourceMember=ms.find(m=>m.branch===pr.head.ref);

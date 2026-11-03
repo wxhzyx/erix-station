@@ -62,6 +62,20 @@ export async function personalIdentity(pool, config, c, userId) {
   if (!credential?.password) throw failure('git_not_ready','成员 Git 凭据尚未就绪');
   return {...u,token:decodeURIComponent(credential.password)};
 }
+/** Display SSO identities without rewriting historical Gitea authors. Deleted
+ * members remain resolvable so retained PRs keep their original attribution. */
+export async function withStationAuthors(db, c, records) {
+  const logins=[...new Set(records.map(row=>row.user?.login).filter(Boolean))];
+  if(!logins.length)return records;
+  const identities=(await db.query(`SELECT g.remote_login,u.login,u.display_name FROM fde_git_accounts g
+    JOIN users u ON u.id=g.fde_id JOIN git_hosts h ON h.id=g.git_host_id
+    WHERE rtrim(h.base_url,'/')=$1 AND g.remote_login=ANY($2::text[])`,[c.baseUrl,logins])).rows;
+  const byLogin=new Map(identities.map(u=>[u.remote_login,u]));
+  return records.map(row=>{
+    const u=byLogin.get(row.user?.login);
+    return u?{...row,user:{...row.user,station_login:u.login,station_display_name:u.display_name}}:row;
+  });
+}
 export async function applyProtections(api, repo, rules) {
   const current = await api('GET',`${repo}/branch_protections`);
   for (const rule of rules) {
