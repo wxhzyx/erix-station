@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { ElButton, ElCard, ElInput, ElSelect, ElOption, ElUpload, ElForm, ElFormItem, ElTable, ElTableColumn, ElTag } from 'element-plus';
 import { onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import { api } from '../api';
 import ModalShell from '../components/ModalShell.vue';
 const props = withDefaults(defineProps<{ view?: 'delivery' | 'quota' }>(), { view: 'delivery' });
 type User = { id:string; login:string; display_name:string; fde_name:string|null; status:string };
 type Package = { id:string; name:string; filename:string; manifest:{name:string;size:number}[] };
-type Project = { id:string; name:string; login:string; package_name:string; status:string; last_error:string|null; repo_url:string|null; deleted_at?:string|null };
+type Project = { id:string; name:string; login:string; package_name:string; status:string; last_error:string|null; repo_url:string|null; deleted_at?:string|null;collaboration_project_id?:string|null };
 type Quota = { daily_limit:number; used:number; reserved:number; remaining:number; day:string };
 type Request = {id:string;login:string;requested_limit:number;reason:string;status:string};
 const users=ref<User[]>([]), packages=ref<Package[]>([]), projects=ref<Project[]>([]), requests=ref<Request[]>([]);
 const userId=ref(''), packageId=ref(''), projectName=ref(''), instructions=ref(''), packageName=ref('');
 const archive=ref<File|null>(null), busy=ref(false), error=ref(''), message=ref('');
 const quota=ref<Quota|null>(null), limit=ref(2000000);
+const collaborationEnabled=ref(false);
 const deleting=ref<Project|null>(null), confirmation=ref('');
 function confirmDelete(project:Project) { deleting.value=project; confirmation.value=''; }
 async function removeProject() { await action(async()=>{
@@ -28,6 +30,7 @@ async function load() {
   } else {
     const [p,a] = await Promise.all([api<{packages:Package[]}>('/api/admin/delivery-packages'), api<{projects:Project[]}>('/api/admin/assigned-projects')]);
     packages.value = p.packages; projects.value = a.projects;
+    collaborationEnabled.value=(await api<{enabled:boolean}>('/api/collaboration')).enabled;
   }
 }
 async function action(fn:()=>Promise<void>) {
@@ -44,8 +47,8 @@ async function upload() { await action(async()=>{
   packageId.value=data.id; message.value='交付包已保存'; await load();
 }); }
 async function assign() { await action(async()=>{
-  await api('/api/admin/assigned-projects',{method:'POST',body:JSON.stringify({user_id:userId.value,package_id:packageId.value,name:projectName.value,instructions:instructions.value})});
-  message.value='项目已下发，用户仓库已初始化'; await load();
+  await api(collaborationEnabled.value?'/api/collaboration':'/api/admin/assigned-projects',{method:'POST',body:JSON.stringify({user_id:userId.value,package_id:packageId.value,name:projectName.value,instructions:instructions.value})});
+  message.value=collaborationEnabled.value?'共享项目正在准备，可在“项目协作”查看进度并邀请成员':'项目已下发，用户仓库已初始化'; await load();
 }); }
 async function retry(id:string) { await action(async()=>{await api(`/api/admin/assigned-projects/${id}/retry`,{method:'POST',body:'{}'});await load();}); }
 async function loadQuota() { quota.value=null; if(!userId.value)return; await action(async()=>{
@@ -96,7 +99,7 @@ async function review(id:string,approve:boolean) { await action(async()=>{
         <ElTableColumn label="用户 / 项目" min-width="200"><template #default="{row}"><strong>{{row.name}}</strong><div class="cell-secondary">{{row.login}}</div></template></ElTableColumn>
         <ElTableColumn prop="package_name" label="交付包" min-width="160" />
         <ElTableColumn label="状态" min-width="130"><template #default="{row}"><ElTag :type="row.deleted_at?'info':row.status==='ready'?'success':row.status==='failed'?'danger':'warning'">{{row.deleted_at?'待完成清理':row.status==='ready'?'已就绪':row.status==='failed'?'失败':'处理中'}}</ElTag><p v-if="row.last_error" class="error">{{row.last_error}}</p></template></ElTableColumn>
-        <ElTableColumn label="处理" min-width="200"><template #default="{row}"><ElButton v-if="row.status!=='ready' && !row.deleted_at" :disabled="busy" @click="retry(row.id)">重试下发</ElButton><a v-if="row.repo_url" :href="row.repo_url" target="_blank" rel="noopener">仓库</a><ElButton data-test="delete-project" type="danger" link :disabled="busy" @click="confirmDelete(row as Project)">{{row.deleted_at?'重试删除':'删除'}}</ElButton></template></ElTableColumn>
+        <ElTableColumn label="处理" min-width="200"><template #default="{row}"><router-link v-if="row.collaboration_project_id" :to="`/projects?project=${row.collaboration_project_id}`">管理协作</router-link><template v-else><ElButton v-if="row.status!=='ready' && !row.deleted_at" :disabled="busy" @click="retry(row.id)">重试下发</ElButton><a v-if="row.repo_url" :href="row.repo_url" target="_blank" rel="noopener">仓库</a><ElButton v-if="row.id" data-test="delete-project" type="danger" link :disabled="busy" @click="confirmDelete(row as Project)">{{row.deleted_at?'重试删除':'删除'}}</ElButton></template></template></ElTableColumn>
       </ElTable>
     </ElCard>
   </div>

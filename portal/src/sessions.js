@@ -92,7 +92,7 @@ export function validateMessageBody(body) {
  *  会话消息总数（口径与 listSessions 的 message_count 同源：该会话 messages 表全量行数、含 synthetic、
  *  不按 role/synthetic/分页过滤）。写在这里而非另发 COUNT：零额外往返；其余调用方（postMessage/
  *  stop/archive/SSE 校验等）不带该列，热路径 SQL 逐字不变。 */
-export async function fetchSession(pool, sessionId, userId, { forUpdate = false, withMessageCount = false } = {}) {
+export async function fetchSession(pool, sessionId, userId, { forUpdate = false, withMessageCount = false, allowArchived = false } = {}) {
   if (typeof sessionId !== 'string' || !UUID_RE.test(sessionId)) {
     throw new SessionError('not_found', 'session not found', { httpStatus: 404 });
   }
@@ -111,7 +111,7 @@ export async function fetchSession(pool, sessionId, userId, { forUpdate = false,
   if (!row || row.user_id !== userId) {
     throw new SessionError('not_found', 'session not found', { httpStatus: 404 });
   }
-  if (row.status !== 'active') {
+  if (row.status !== 'active' && !allowArchived) {
     throw new SessionError('not_found', 'session not found', { httpStatus: 404 });
   }
   return row;
@@ -735,11 +735,11 @@ export async function postMessage(pool, {
  * 只在「直接终态」那一步真的写了 `run_end` 后、在 **COMMIT 之后**调一次（失败不影响 200，同 postMessage
  * 的 `onSessionTitle` 口径）。`running → cancelling` 分支**不**推：它的 `run_end` 由 worker 的 U2 终态事务产出。
  */
-export async function stopSession(pool, { userId, sessionId, notify }) {
+export async function stopSession(pool, { userId, sessionId, notify, allowArchived = false }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const s = await fetchSession(client, sessionId, userId, { forUpdate: true });
+    const s = await fetchSession(client, sessionId, userId, { forUpdate: true, allowArchived });
 
     // 第 1 步 CAS：queued → 终态（未开始就被取消）。转换合法性见 internal.js validateTransition
     // 的 `queued → finished|failed` 边（portal.md §9.6）。

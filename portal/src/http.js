@@ -23,6 +23,7 @@ import * as llm from './llm.js';
 import * as chatMode from './chat-mode.js';
 import { parseDocument } from './document-parser.js';
 import * as projectApprovals from './project-approvals.js';
+import { collaborationApi, collaborationHeartbeat } from './collaboration.js';
 import { createApprovalRepository, ApprovalRepositoryError } from './approval-repository.js';
 import { ApprovalMergeError } from './approval-git-merge.js';
 import * as modeSettings from './mode-settings.js';
@@ -837,6 +838,15 @@ async function routeApi(req, res, ctx, url) {
     return;
   }
 
+  if (pathname === '/api/collaboration' || pathname.startsWith('/api/collaboration/')) {
+    const session = await requireSession(req, ctx);
+    let body = {};
+    if (req.method !== 'GET') { requireJson(req); body = await readJsonBody(req, config.maxBodyBytes); }
+    const result = await collaborationApi(pool, config, session.user, {
+      method:req.method, parts:pathname.slice('/api/collaboration'.length).split('/').filter(Boolean), body,
+    });
+    return sendJson(res, 200, result);
+  }
   if (pathname === '/api/project-approvals') {
     const session = await requireSession(req, ctx);
     if (req.method === 'GET') return sendJson(res, 200, await projectApprovals.listProjectApprovals(pool, session.user.id, {
@@ -3368,6 +3378,7 @@ async function handleInternal(req, res, ctx, url) {
     // issue #289：把 serve 进程的 llmGateway 单例透传给心跳对账；必须传 ctx.llmGateway 本身，
     // 不可在此现造 client——llm.js 的映射 TTL 缓存按 client 对象身份分槽，现造 ⇒ 每次心跳多打一次 GET /model/info。
     const result = await internal.heartbeat(ctx.pool, { container, user, body, llmGateway: ctx.llmGateway, log: ctx.log });
+    if(ctx.config.collaborationConfigFile)Object.assign(result,await collaborationHeartbeat(ctx.pool,user,body));
     return sendJson(res, 200, result);
   }
 

@@ -1,0 +1,33 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import {flushPromises,mount} from '@vue/test-utils';
+import {createPinia} from 'pinia';
+import {createMemoryHistory,createRouter} from 'vue-router';
+import SharedProjectsView from './SharedProjectsView.vue';
+import {useAuthStore} from '../stores/auth';
+const mounted:ReturnType<typeof mount>[]=[];
+afterEach(()=>{for(const w of mounted.splice(0))w.unmount();vi.unstubAllGlobals();});
+async function setup(state='invited'){
+  const calls:{url:string;body?:string}[]=[];
+  vi.stubGlobal('fetch',vi.fn(async(url:string,options?:RequestInit)=>{
+    calls.push({url,body:options?.body as string});
+    const data=url==='/api/collaboration'?{enabled:true,projects:[{id:'p',name:'alpha',state:'active',membership_state:state}]}:
+      url.endsWith('/p')?{project:{id:'p',name:'alpha',state:'active',owner_user_id:'a',owner_login:'Owner',owner_name:'负责人'},mine:{id:'m',user_id:'b',login:'DomainB',branch:'dev/DomainB',state},members:[{id:'m',user_id:'b',login:'DomainB',display_name:'员工 B',branch:'dev/DomainB',state}],can_manage:false,candidates:[]}:
+      url.endsWith('/pulls')?{pulls:[]}:{ok:true};
+    return new Response(JSON.stringify(data),{status:200});
+  }));
+  const pinia=createPinia(),auth=useAuthStore(pinia);auth.user={id:'b',login:'DomainB',display_name:'员工 B',role:'fde',fde_name:'seat',auth_source:'oidc'};
+  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/projects',component:SharedProjectsView}]});await router.push('/projects');await router.isReady();
+  const w=mount(SharedProjectsView,{global:{plugins:[pinia,router],stubs:{StationShell:{template:'<div><slot /></div>'}}}});mounted.push(w);await flushPromises();await vi.waitFor(()=>expect(w.text()).toContain('dev/DomainB'));return {w,calls};
+}
+it('invitation acceptance is explicit and never silently creates a workspace',async()=>{
+  const {w,calls}=await setup();expect(calls.filter(x=>x.body)).toHaveLength(0);
+  const button=w.findAll('button').find(b=>b.text()==='接受邀请')!;
+  await vi.waitFor(()=>expect(button.attributes('disabled')).toBeUndefined());await button.trigger('click');await flushPromises();
+  expect(calls.some(c=>c.url==='/api/collaboration/p/members/m/accept')).toBe(true);
+});
+it('an invited member cannot enter the workbench or submit a PR',async()=>{
+  const {w}=await setup();expect(w.text()).not.toContain('进入项目');expect(w.text()).not.toContain('提交合并');
+});
+it('an active member gets development and explicit synchronization actions',async()=>{
+  const {w}=await setup('active');expect(w.text()).toContain('进入项目');expect(w.text()).toContain('同步主分支');expect(w.text()).not.toContain('邀请成员');
+});

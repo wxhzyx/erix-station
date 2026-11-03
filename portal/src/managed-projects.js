@@ -34,13 +34,17 @@ export async function listPackages(pool) {
 }
 export async function listAssignments(pool, userId = null) {
   return (await pool.query(`SELECT a.id,a.user_id,a.package_id,a.name,a.instructions,a.status,a.repo_url,a.last_error,
-    a.created_at,a.deleted_at,u.login,p.name AS package_name FROM project_assignments a
+    a.created_at,a.deleted_at,a.collaboration_project_id,u.login,p.name AS package_name FROM project_assignments a
     JOIN users u ON u.id=a.user_id JOIN delivery_packages p ON p.id=a.package_id
     WHERE u.deleted_at IS NULL AND (a.deleted_at IS NULL OR a.cleanup_completed_at IS NULL)
-    ${userId ? 'AND a.user_id=$1 AND a.deleted_at IS NULL' : ''} ORDER BY a.created_at DESC`, userId ? [userId] : [])).rows;
+    ${userId ? `AND a.user_id=$1 AND a.deleted_at IS NULL AND (a.collaboration_project_id IS NULL OR EXISTS (
+      SELECT 1 FROM project_memberships m JOIN collaboration_projects cp ON cp.id=m.project_id
+      WHERE m.assignment_id=a.id AND m.state='active' AND cp.state='active'))` : ''} ORDER BY a.created_at DESC`, userId ? [userId] : [])).rows;
 }
 export async function assertAssigned(pool, userId, cwd) {
-  const row = (await pool.query(`SELECT id FROM project_assignments WHERE user_id=$1 AND name=$2 AND status='ready' AND deleted_at IS NULL`,
+  const row = (await pool.query(`SELECT id FROM project_assignments WHERE user_id=$1 AND name=$2 AND status='ready' AND deleted_at IS NULL
+    AND (collaboration_project_id IS NULL OR EXISTS (SELECT 1 FROM project_memberships m JOIN collaboration_projects cp ON cp.id=m.project_id
+      WHERE m.assignment_id=project_assignments.id AND m.state='active' AND cp.state='active'))`,
     [userId, cwd.replace(/^~\/projects\//, '')])).rows[0];
   if (!row) throw new AdminError('project_not_assigned', '该项目尚未由管理员下发', { httpStatus: 403 });
 }
@@ -51,7 +55,7 @@ export async function lockMemberProjects(client, userId) {
 }
 
 /** Retain the assignment and upstream repository. Only remove its local directory. */
-export async function deleteAssignment(pool, { id, actorId, confirmation, config }) {
+export async function deleteAssignment(pool, { id, actorId, confirmation, config, allowShared = false }) {
   if (!ID.test(id)) throw new AdminError('not_found', '项目不存在', { httpStatus: 404 });
   const client = await pool.connect();
   let a;
@@ -61,6 +65,7 @@ export async function deleteAssignment(pool, { id, actorId, confirmation, config
     a = (await client.query(`SELECT a.*,u.fde_name FROM project_assignments a
       JOIN users u ON u.id=a.user_id WHERE a.id=$1 FOR UPDATE OF a`, [id])).rows[0];
     if (!a) throw new AdminError('not_found', '项目不存在', { httpStatus: 404 });
+    if (a.collaboration_project_id && !allowShared) throw new AdminError('shared_project', '请在共享项目中移除成员或删除项目', {httpStatus:409});
     if (confirmation !== a.name) throw new AdminError('confirmation_required', '请输入完整项目名称确认删除');
     if (a.cleanup_completed_at) { await client.query('COMMIT'); return { ok: true }; }
     await lockMemberProjects(client, a.user_id);
@@ -143,6 +148,7 @@ export async function provisionAssignment(pool, { id, config, fetchImpl = fetch,
       FROM project_assignments a JOIN users u ON u.id=a.user_id JOIN delivery_packages p ON p.id=a.package_id
       LEFT JOIN fde_git_accounts g ON g.fde_id=a.user_id LEFT JOIN git_hosts h ON h.id=g.git_host_id WHERE a.id=$1`, [id])).rows[0];
     if (!a) throw new AdminError('not_found', '项目不存在', { httpStatus: 404 });
+    if (a.collaboration_project_id) throw new AdminError('shared_project', '请在共享项目中重试准备工作空间', {httpStatus:409});
     if (a.deleted_at) throw new AdminError('project_deleted', '项目已删除，不能重新下发', { httpStatus: 409 });
     if (a.status === 'ready') return { id, status: 'ready', repo_url: a.repo_url };
     if (a.user_status !== 'active' || !a.remote_login || !a.enabled) throw new AdminError('git_not_ready', '用户的 Gitea 账号尚未就绪', { httpStatus: 409 });

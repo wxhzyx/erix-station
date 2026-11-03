@@ -29,6 +29,8 @@ import { captureAndUploadArtifact } from './lib/artifacts.js';
 // 端口呈现优化·观测层 MVP（迁移 0022）：/proc 采样当前真实监听，随 U4 heartbeat 捐带 `listeners`。
 // 只读展示用途，不做管控（#246 不变式）；采样失败只报空数组，绝不拖死心跳。
 import { collectListeners } from './lib/listeners.js';
+import { cleanupProjectProcesses } from './lib/project-cleanup.js';
+const collaborationCleanupAcks = new Set();
 // issue #288 启动不变式：只取 shell 超时上限的**解析口径**（与 worker 侧同源），不引入 shell 执行本身。
 import { resolveShellMaxTimeoutMs } from './lib/shell-tools.js';
 
@@ -445,6 +447,7 @@ async function heartbeatOnce() {
       build_revision: CFG.buildRevision,
       runs,
       listeners,
+      collaboration_cleanup_acks: [...collaborationCleanupAcks],
     },
   });
   return r.data;
@@ -1401,6 +1404,11 @@ async function heartbeatLoop() {
     sweepWatchdog({ now: Date.now() });
     try {
       const data = await heartbeatOnce();
+      collaborationCleanupAcks.clear();
+      for (const item of (data?.cleanup_projects ?? []).slice(0,100)) {
+        try { if(cleanupProjectProcesses({name:item.name,home:CFG.home,procPath:CFG.procPath}))collaborationCleanupAcks.add(item.id); }
+        catch { log('warn','project cleanup not confirmed; will retry',{project:item.name}); }
+      }
       touchHbOk(); // M5：心跳成功 → 刷新健康标记（healthcheck.sh 读 mtime）
       // Phase B2：刷新下行模型集。旧 portal 不下行 / 无配置 → null（行为与现状一致）。
       state.llmModels = parseHeartbeatModels(data);

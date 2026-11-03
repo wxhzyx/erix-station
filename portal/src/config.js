@@ -252,6 +252,7 @@ export function loadConfig(env = process.env) {
     fdeImage,
     fdeDevMode,
     managedProjects: env.MANAGED_PROJECTS === '1',
+    collaborationConfigFile: env.FDE_COLLAB_CONFIG_FILE || '',
     quotaAdminKey: env.FDE_QUOTA_ADMIN_KEY || '',
     llmGatewayTeamId: env.LLM_GATEWAY_TEAM_ID || '',
     // F5：开发期 whoami 等镜像不满足「root 启动→drop 1001」契约时的 --user 兜底（⚠️ dev 偏差）；生产留空由镜像 entrypoint 降权。

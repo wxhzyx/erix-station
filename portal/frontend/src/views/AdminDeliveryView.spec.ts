@@ -13,12 +13,13 @@ it('requires the project name and explains retained repositories before deletion
     return new Response(JSON.stringify(data),{status:200});
   }));
   const wrapper=mount(AdminDeliveryView);await flushPromises();
+  await vi.waitFor(()=>expect(wrapper.get('[data-test="delete-project"]').attributes('disabled')).toBeUndefined());
   await wrapper.get('[data-test="delete-project"]').trigger('click');
   expect(wrapper.get('[role="dialog"]').text()).toContain('保留 Gitea 仓库');
   const button=wrapper.get('[data-test="confirm-project-delete"]');expect(button.attributes('disabled')).toBeDefined();
   await wrapper.get('[data-test="project-delete-confirmation"]').setValue('alpha');
   await wrapper.get('form.delivery').trigger('submit');await flushPromises();
-  expect(requests.find(r=>r.options?.method==='DELETE')).toEqual({url:'/api/admin/assigned-projects/project-one',options:expect.objectContaining({method:'DELETE',body:JSON.stringify({confirmation:'alpha'})})});
+  await vi.waitFor(()=>expect(requests.find(r=>r.options?.method==='DELETE')).toEqual({url:'/api/admin/assigned-projects/project-one',options:expect.objectContaining({method:'DELETE',body:JSON.stringify({confirmation:'alpha'})})}));
   wrapper.unmount();
 });
 
