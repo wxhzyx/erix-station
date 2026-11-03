@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '../api';
@@ -66,7 +67,7 @@ onUnmounted(() => { epoch++; controller.abort(); });
       <section class="console-note"><strong>{{ en ? 'One gateway. Individual access.' : '统一接入，按人分配。' }}</strong><p>{{ en ? 'Select a member, then assign models for chat and development. Personal keys and usage accounting stay separate.' : '先选择成员，再分别配置聊天和开发模型。个人密钥与用量统计由平台自动管理。' }}</p><router-link to="/admin/llm">{{ en ? 'Manage API connections →' : '管理 API 接入 →' }}</router-link></section>
       <form class="console-card assignment-form" @submit.prevent="save">
         <label class="settings-field">{{ en ? 'Member' : '配置用户' }}<select v-model="userId" :disabled="busy" class="settings-select" @change="loadSettings"><option value="" disabled>{{ en ? 'Select a member' : '选择用户' }}</option><option v-for="u in users" :key="u.id" :value="u.id">{{ u.display_name || u.login }} · {{ u.login }}</option></select></label>
-        <div class="mode-config-tabs" role="group" :aria-label="en ? 'Model configuration mode' : '模型配置模式'"><button type="button" :aria-pressed="mode === 'chat'" :disabled="busy" @click="mode = 'chat'">{{ en ? 'Chat model' : '聊天模型' }}</button><button type="button" :aria-pressed="mode === 'work'" :disabled="busy || !member?.fde_name" @click="mode = 'work'">{{ en ? 'Development model' : '开发模型' }}</button></div>
+        <div class="mode-config-tabs" role="group" :aria-label="en ? 'Model configuration mode' : '模型配置模式'"><ElButton native-type="button" :aria-pressed="mode === 'chat'" :disabled="busy" @click="mode = 'chat'">{{ en ? 'Chat model' : '聊天模型' }}</ElButton><ElButton native-type="button" :aria-pressed="mode === 'work'" :disabled="busy || !member?.fde_name" @click="mode = 'work'">{{ en ? 'Development model' : '开发模型' }}</ElButton></div>
         <p v-if="member && !member.fde_name" class="muted">{{ en ? 'This member has no development workstation.' : '此成员尚未分配开发工位，仅可配置聊天模型。' }}</p>
         <div class="form-grid">
           <label class="settings-field">{{ en ? 'API connection' : 'API 接入' }}<select v-model="provider" :disabled="busy || !settings" class="settings-select" @change="providerChanged"><option value="">{{ en ? 'Select a provider' : '选择供应商' }}</option><option v-for="p in settings?.providers" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
@@ -77,7 +78,7 @@ onUnmounted(() => { epoch++; controller.abort(); });
           <label class="settings-field">{{ en ? 'Vision model' : '视觉模型' }}<select v-model="vision" :disabled="busy" class="settings-select"><option value="">{{ en ? 'Not configured' : '不配置' }}</option><option v-for="m in models.filter(m => m.type === 'vision')" :key="m.id" :value="m.id">{{ m.display_name || m.model_name }}</option></select></label>
         </div></details>
         <p v-if="error" role="alert" class="console-error">{{ error }}</p><p v-if="saved" role="status" class="console-success">{{ en ? 'Saved' : '已保存' }}</p>
-        <div class="form-footer"><span class="muted">{{ en ? 'Changes apply to the selected member.' : '配置仅对当前所选用户生效。' }}</span><button class="station-primary" :disabled="busy || !provider || !main || !userId">{{ busy ? (en ? 'Please wait…' : '请稍候…') : (en ? 'Save assignment' : '保存模型分配') }}</button></div>
+        <div class="form-footer"><span class="muted">{{ en ? 'Changes apply to the selected member.' : '配置仅对当前所选用户生效。' }}</span><ElButton native-type="submit" class="station-primary" :disabled="busy || !provider || !main || !userId">{{ busy ? (en ? 'Please wait…' : '请稍候…') : (en ? 'Save assignment' : '保存模型分配') }}</ElButton></div>
       </form>
     </template>
   </div>

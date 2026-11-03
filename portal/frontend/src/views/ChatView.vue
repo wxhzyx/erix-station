@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
@@ -106,15 +107,15 @@ onUnmounted(reset);
     <header class="station-header flex flex-wrap items-center gap-3">
       <div><span class="page-eyebrow">WORKSPACE / CHAT</span><h1>{{ en ? 'AI conversation' : 'AI 对话' }}</h1></div><span class="flex-1"></span>
       <router-link to="/settings?tab=usage" class="header-usage">{{ en ? 'Usage & quota' : '用量与额度' }}</router-link>
-      <button class="station-secondary" @click="logout">{{ t('common.logout') }}</button>
+      <ElButton native-type="submit" class="station-secondary" @click="logout">{{ t('common.logout') }}</ElButton>
     </header>
     <main class="chat-main mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 overflow-hidden px-4 py-5">
       <div class="flex gap-3">
-        <button class="station-secondary rounded-xl px-4 py-2 disabled:opacity-40" :disabled="busy" @click="newChat">{{ en ? 'New chat' : '新对话' }}</button>
+        <ElButton native-type="submit" class="station-secondary rounded-xl px-4 py-2 disabled:opacity-40" :disabled="busy" @click="newChat">{{ en ? 'New chat' : '新对话' }}</ElButton>
         <select :value="selected" :disabled="busy" :aria-label="en ? 'Conversation history' : '历史对话'" class="chat-history min-w-0 flex-1 rounded-xl px-3" @change="choose"><option value="">{{ en ? 'New conversation' : '新的对话' }}</option><option v-for="c in conversations" :key="c.id" :value="c.id">{{ c.title || (en ? 'Untitled conversation' : '未命名对话') }}</option></select>
       </div>
       <section class="chat-stream min-h-0 flex-1 space-y-4 overflow-auto" aria-live="polite" :aria-busy="busy">
-        <div v-if="!messages.length" class="chat-empty"><div class="station-emblem" aria-hidden="true">F<span>_</span></div><div><p class="page-eyebrow">THINK. EXPLORE. CREATE.</p><h2>{{ en ? 'Let’s talk.' : '开始一段新对话' }}</h2><p class="empty-description">{{ en ? 'Explore ideas, understand documents, and turn questions into next steps.' : '梳理想法、理解文档，让每一个问题都有下一步。' }}</p></div><div class="chat-suggestions"><button type="button" @click="draft = en ? 'Help me structure this idea: ' : '帮我梳理这个想法：'">{{ en ? 'Explore an idea' : '梳理一个想法' }} <span aria-hidden="true">↗</span></button><button type="button" @click="draft = en ? 'Help me analyze this document: ' : '帮我分析这份文档：'">{{ en ? 'Analyze a document' : '分析一份文档' }} <span aria-hidden="true">↗</span></button></div></div>
+        <div v-if="!messages.length" class="chat-empty"><div class="station-emblem" aria-hidden="true">F<span>_</span></div><div><p class="page-eyebrow">THINK. EXPLORE. CREATE.</p><h2>{{ en ? 'Let’s talk.' : '开始一段新对话' }}</h2><p class="empty-description">{{ en ? 'Explore ideas, understand documents, and turn questions into next steps.' : '梳理想法、理解文档，让每一个问题都有下一步。' }}</p></div><div class="chat-suggestions"><ElButton native-type="button" @click="draft = en ? 'Help me structure this idea: ' : '帮我梳理这个想法：'">{{ en ? 'Explore an idea' : '梳理一个想法' }} <span aria-hidden="true">↗</span></ElButton><ElButton native-type="button" @click="draft = en ? 'Help me analyze this document: ' : '帮我分析这份文档：'">{{ en ? 'Analyze a document' : '分析一份文档' }} <span aria-hidden="true">↗</span></ElButton></div></div>
         <article v-for="message in messages" :key="message.id" class="chat-message rounded-2xl p-5" :class="message.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'">
           <h3 class="mb-2 text-sm font-semibold">{{ message.role === 'user' ? (en ? 'You' : '你') : 'FDE Station' }}</h3>
           <p class="whitespace-pre-wrap break-words">{{ message.content }}</p>
@@ -124,12 +125,12 @@ onUnmounted(reset);
       </section>
       <form class="station-composer space-y-3 rounded-2xl p-4" @submit.prevent="send">
         <p v-if="error" role="alert" class="text-sm text-red-700">{{ error }}</p>
-        <ul v-if="files.length" class="flex flex-wrap gap-2"><li v-for="(f,index) in files" :key="index" class="rounded bg-black/5 px-2 py-1 text-sm">📎 {{ f.name }} <button type="button" :disabled="busy || reading" :aria-label="`${en ? 'Remove' : '移除'} ${f.name}`" @click="files.splice(index,1)">×</button></li></ul>
+        <ul v-if="files.length" class="flex flex-wrap gap-2"><li v-for="(f,index) in files" :key="index" class="rounded bg-black/5 px-2 py-1 text-sm">📎 {{ f.name }} <ElButton native-type="button" :disabled="busy || reading" :aria-label="`${en ? 'Remove' : '移除'} ${f.name}`" @click="files.splice(index,1)">×</ElButton></li></ul>
         <p v-for="warning in files.flatMap(file => (file.warnings ?? []).map(w => `${file.name}: ${w}`))" :key="warning" role="status" class="text-sm text-amber-700">{{ warning }}</p>
         <textarea v-model="draft" :disabled="busy" maxlength="100000" rows="3" :aria-label="en ? 'Message' : '消息'" :placeholder="en ? 'Write a message…' : '输入消息…'" class="w-full resize-none bg-transparent p-1 outline-none"></textarea>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <label class="station-secondary cursor-pointer rounded-lg px-3 py-2 text-sm">{{ reading ? (en ? 'Reading…' : '读取中…') : (en ? 'Attach files' : '上传文件') }}<input type="file" multiple :accept="accept" :disabled="busy || reading" class="sr-only" @change="upload" /></label>
-          <button class="station-primary rounded-xl px-5 py-2 text-white disabled:opacity-40" :disabled="busy || reading || (!draft.trim() && !files.length)">{{ en ? 'Send' : '发送' }}</button>
+          <ElButton native-type="submit" class="station-primary rounded-xl px-5 py-2 text-white disabled:opacity-40" :disabled="busy || reading || (!draft.trim() && !files.length)">{{ en ? 'Send' : '发送' }}</ElButton>
         </div>
         <p class="text-xs text-black/50">{{ en ? 'Drop files here · Text, images, PDF and Office · Up to 5 files' : '文件可直接拖入 · 支持文本、图片、PDF 和 Office · 最多 5 个' }}</p>
       </form>

@@ -98,7 +98,7 @@ async function mountAdminPorts(handler: Handler) {
 
 /** 打开某个登录名的编辑框并切到「预览端口」tab（列表只在这之后才拉）。 */
 async function openPortsTab(wrapper: Awaited<ReturnType<typeof mountAdminPorts>>['wrapper'], login: string) {
-  const row = wrapper.findAll('[data-test="user-row"]').find((item) => item.text().includes(login));
+  const row = wrapper.findAll('.member-table .el-table__row').find((item) => item.text().includes(login));
   if (!row) throw new Error(`${login} 行不存在`);
   await row.get('[data-test="edit-user"]').trigger('click');
   await flushPromises();
@@ -133,7 +133,7 @@ describe('管理台 · FDE 预览端口面板', () => {
   it('tab 默认不拉端口；点开才 GET /api/admin/fdes/:fde/ports 并渲染 3 行', async () => {
     const { wrapper, fetchMock } = await mountAdminPorts(() => undefined);
     try {
-      const row = wrapper.findAll('[data-test="user-row"]').find((item) => item.text().includes('alice'))!;
+      const row = wrapper.findAll('.member-table .el-table__row').find((item) => item.text().includes('alice'))!;
       await row.get('[data-test="edit-user"]').trigger('click');
       await flushPromises();
       expect(callsTo(fetchMock, 'GET', '/api/admin/fdes/alpha-fde/ports')).toHaveLength(0);

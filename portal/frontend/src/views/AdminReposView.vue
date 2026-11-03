@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus';
 import { onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ModalShell from '../components/ModalShell.vue';
@@ -109,24 +110,24 @@ onMounted(() => {
               :class="host.enabled ? 'border-green-600 bg-green-50 text-green-700' : 'border-black/30 bg-black/5 text-black/50'"
             >{{ host.enabled ? t('admin.enabled') : t('admin.disabled') }}</span>
             <span class="flex-1"></span>
-            <button
-              type="button"
+            <ElButton
+              native-type="button"
               data-test="toggle-git-host"
               class="rounded-md border border-black/20 px-2 py-0.5 text-xs hover:bg-black/5"
               @click="admin.toggleGitHost(host)"
-            >{{ host.enabled ? t('admin.disabled') : t('admin.enabled') }}</button>
-            <button
-              type="button"
+            >{{ host.enabled ? t('admin.disabled') : t('admin.enabled') }}</ElButton>
+            <ElButton
+              native-type="button"
               data-test="edit-git-host"
               class="rounded-md border border-black/20 px-2 py-0.5 text-xs hover:bg-black/5"
               @click="openEdit(host)"
-            >{{ t('admin.edit') }}</button>
-            <button
-              type="button"
+            >{{ t('admin.edit') }}</ElButton>
+            <ElButton
+              native-type="button"
               data-test="delete-git-host"
               class="rounded-md border border-red-600/60 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50"
               @click="deletingHost = host"
-            >{{ t('admin.delete') }}</button>
+            >{{ t('admin.delete') }}</ElButton>
           </div>
           <p class="mt-1 break-all text-xs text-black/55">{{ host.base_url }}</p>
           <p v-if="host.admin_key_configured" data-test="admin-key-mask" class="mt-1 text-xs text-black/45">
@@ -135,12 +136,12 @@ onMounted(() => {
         </article>
       </div>
 
-      <button
-        type="button"
+      <ElButton type="primary"
+        native-type="button"
         data-test="open-add-git-host"
         class="mt-3 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover"
         @click="showAdd = true"
-      >{{ t('admin.repos.add') }}</button>
+      >{{ t('admin.repos.add') }}</ElButton>
     </div>
   </section>
 
@@ -152,7 +153,7 @@ onMounted(() => {
   >
     <div class="flex items-center gap-2 border-b border-black/10 px-3 py-2">
       <h2 class="text-sm font-medium">{{ editingHost ? t('admin.repos.editTitle') : t('admin.repos.addTitle') }}</h2>
-      <button type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="closeForm">✕</button>
+      <ElButton native-type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="closeForm">✕</ElButton>
     </div>
     <form data-test="git-host-form" class="grid gap-3 px-3 py-3" @submit.prevent="saveHost">
       <label class="flex flex-col gap-1 text-xs text-black/55">
@@ -196,10 +197,10 @@ onMounted(() => {
       <p class="text-xs text-black/50">{{ t('admin.repos.modeAuto') }}</p>
       <p v-if="admin.gitHostsErr" class="syserr" role="alert">{{ admin.gitHostsErr }}</p>
       <div class="flex gap-2">
-        <button type="submit" :disabled="submitting" class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover disabled:opacity-50">
+        <ElButton type="primary" native-type="submit" :disabled="submitting" class="flex-1 rounded-md bg-brand px-2.5 py-1 text-sm text-white hover:bg-brand-hover disabled:opacity-50">
           {{ editingHost ? t('admin.save') : t('admin.repos.add') }}
-        </button>
-        <button type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="closeForm">{{ t('common.cancel') }}</button>
+        </ElButton>
+        <ElButton native-type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="closeForm">{{ t('common.cancel') }}</ElButton>
       </div>
     </form>
   </ModalShell>
@@ -211,22 +212,22 @@ onMounted(() => {
   >
     <div class="flex items-center gap-2 border-b border-black/10 px-3 py-2">
       <h2 class="text-sm font-medium">{{ t('admin.confirmDeleteTitle') }}</h2>
-      <button type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="deletingHost = null">✕</button>
+      <ElButton native-type="button" :aria-label="t('common.close')" class="ml-auto rounded-md px-2 py-1 text-sm hover:bg-black/5" @click="deletingHost = null">✕</ElButton>
     </div>
     <div class="p-3">
       <p>{{ t('admin.repos.confirmDelete', { name: deletingHost.name }) }}</p>
       <p v-if="admin.gitHostsErr" class="syserr mt-2" role="alert">{{ admin.gitHostsErr }}</p>
       <div class="mt-3 flex gap-2">
-        <button
-          type="button"
+        <ElButton type="danger"
+          native-type="button"
           data-test="confirm-delete-git-host"
           :disabled="submitting"
           class="flex-1 rounded-md bg-red-700 px-2.5 py-1 text-sm text-white hover:bg-red-800 disabled:opacity-50"
           @click="confirmDelete"
-        >{{ t('admin.delete') }}</button>
-        <button type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="deletingHost = null">
+        >{{ t('admin.delete') }}</ElButton>
+        <ElButton native-type="button" class="flex-1 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5" @click="deletingHost = null">
           {{ t('common.cancel') }}
-        </button>
+        </ElButton>
       </div>
     </div>
   </ModalShell>

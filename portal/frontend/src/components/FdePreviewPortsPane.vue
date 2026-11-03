@@ -46,11 +46,7 @@ const currentBlock = computed(() => formatBlockRange(ports.blockRange.value));
 const portCount = computed(() => ports.items.value.length);
 const isBlockTaken = computed(() => moveError.value?.code === 'preview_port_block_taken');
 
-// issue #350：接上「号池占用总览」（判据④）。**只读引用**：
-//   • 快照来自 admin store 的缓存（本面板**不发**占用总览请求——那会让「进面板」多一趟网络，
-//     也会让 #246 的「tab 点开才拉端口列表」多一个隐式依赖）；没看过总览时这段提示不出现。
-//   • **红线**：绝不因为看到空闲段就改写 `block_start_input` 的值或自动提交
-//     （#256 口径：管理员显式指定的段被占要报错，禁止偷偷换段）。所以这里只读 `blockStart`，从不写它。
+// Allocation checks stay beside the move form; the runtime overview does not supply allocation evidence.
 const admin = useAdminStore();
 const usageSnapshot = computed(() => admin.previewUsage);
 const typedStart = computed(() => parseBlockStart(blockStart.value));
@@ -174,15 +170,8 @@ function errorText(error: PreviewApiError): string {
           : t('previewPorts.admin.currentBlockNone') }}
       </p>
       <p class="mt-1 text-xs text-black/55">{{ t('previewPorts.admin.blockHint') }}</p>
-      <!-- issue #350（判据④）：引用式接上号池占用总览。只给入口，不预填、不自动提交。 -->
-      <p class="mt-1 text-xs text-black/55">
-        {{ t('previewPorts.admin.usageRefHint') }}
-        <router-link
-          :to="{ name: 'admin-preview-pool' }"
-          data-test="open-preview-pool-usage"
-          class="underline"
-        >{{ t('previewPorts.admin.usageRefLink') }}</router-link>
-      </p>
+      <button type="button" class="mt-2 text-sm underline" :disabled="admin.previewUsageLoading" @click="admin.loadPreviewUsage()">{{ t('previewPorts.admin.usageRefLink') }}</button>
+      <p v-if="admin.previewUsageErr" class="syserr" role="alert">{{ admin.previewUsageErr }}</p>
 
       <div class="mt-2 flex flex-wrap items-end gap-2">
         <label class="flex min-w-40 flex-col gap-1 text-xs text-black/60">

@@ -538,7 +538,7 @@ export const en = {
       // issue #350: the block-move card links to the pool usage overview (reference only: this panel
       // never pre-fills the input or auto-submits just because a block looks free)
       usageRefHint: 'Check the pool usage overview before picking a block: which blocks are taken and by whom, and which are completely free.',
-      usageRefLink: 'Open the pool usage overview',
+      usageRefLink: 'Check allocations',
       occupancyTitle: 'This block in the latest snapshot:',
       occupancyOccupied: 'in use (held by: {names}; {count} live ports) — the server rejects the move (409), pick another block.',
       occupancyOccupiedNoCount: 'in use (held by: {names}) — the server rejects the move (409), pick another block.',

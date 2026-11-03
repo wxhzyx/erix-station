@@ -1,198 +1,59 @@
 <script setup lang="ts">
-// 管理台 · 预览号池占用总览（issue #350）。
-//
-// 存在的理由（§4.7a）：改块原本只能填一个数字试错，撞 `409 preview_port_block_taken` 才知道那段被占。
-// 本页把「哪几段被谁占、哪几段整段空闲」一次画出来，管理员**先看这里再选段**。
-//
-// 判据（工单 ①-⑥，逐条都有 spec 用例钉住）：
-//   ① 懒挂载：进管理台不请求，切到本 tab 才发**恰好 1 次** `GET /api/admin/preview-ports/usage`
-//      （`onMounted` 是唯一触发点，本组件不 watch 任何东西）；
-//   ② 零端口/号池字面量：段边界 / 块大小 / 总段数**全部来自响应的 `pool`**（源码级断言在 spec 里）；
-//   ③ 不猜数：缺失/脏值显示「—」，`free_blocks.items` 为空与「还没请求」分开呈现，
-//      `has_more=true` 必须说「只显示前 N 段，还有更多」并给出 `limit`；
-//   ⑤ `partial > 0` 有独立呈现（不并进 free/occupied）；
-//   ⑥ 请求失败给一行错误（复用既有 `.syserr` 形态；服务端 message 原文，只加本地化前缀）。
-//
-// 本页**只读**：没有任何写操作、不碰 `block_start_input`、不提供「一键用这段」按钮
-// （#256 口径：管理员显式指定的段被占要报错，禁止偷偷换段）。
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useAdminStore } from '../stores/admin';
-import {
-  blockEnd,
-  formatBlockLabel,
-  usageConsistencyIssues,
-  type PreviewOccupiedBlock,
-  type UsageIssueKey,
-} from '../lib/previewPoolUsage';
-
-const { t } = useI18n();
-const admin = useAdminStore();
-
-const usage = computed(() => admin.previewUsage);
-const loaded = computed(() => admin.previewUsageLoaded);
-const loading = computed(() => admin.previewUsageLoading);
-const error = computed(() => admin.previewUsageErr);
-const pool = computed(() => usage.value?.pool ?? null);
-const summary = computed(() => usage.value?.summary ?? {
-  totalBlocks: null, free: null, partial: null, occupied: null,
-});
-const occupiedBlocks = computed(() => usage.value?.occupiedBlocks ?? []);
-const freeBlocks = computed(() => usage.value?.freeBlocks ?? { items: [], limit: null, hasMore: null });
-const blockSize = computed(() => pool.value?.blockSize ?? null);
-const issues = computed<UsageIssueKey[]>(() => (usage.value ? usageConsistencyIssues(usage.value) : []));
-
-/** 缺值一律「—」（判据③：不许把缺失/脏值渲染成 0）。 */
-function numText(value: number | null): string {
-  return value === null ? t('admin.previewPool.unknownValue') : String(value);
+import { ElButton, ElInput, ElTable, ElTableColumn, ElTag, ElAlert, ElEmpty } from 'element-plus';
+import { Search, Refresh } from '@element-plus/icons-vue';
+import { api } from '../api';
+interface Listener { id:string; login:string; display_name:string|null; project:string|null; port:number; branch:string|null; routed:boolean; observed_at:string }
+interface Snapshot { sampled_at:string; freshness_seconds:number; total:number; limit:number; items:Listener[] }
+const { locale } = useI18n();
+const en = computed(() => locale.value === 'en');
+const snapshot = ref<Snapshot|null>(null), loading = ref(false), error = ref(''), search = ref('');
+const clock = ref(0);
+let receivedAt = 0, serverAge = 0, disposed = false;
+let poll:ReturnType<typeof setInterval>, tick:ReturnType<typeof setInterval>;
+const fresh = computed(() => snapshot.value?.items.filter(row => {
+  const age = serverAge + clock.value - receivedAt - Date.parse(row.observed_at);
+  return age >= 0 && age < snapshot.value!.freshness_seconds * 1000;
+}) ?? []);
+const rows = computed(() => fresh.value.filter(row =>
+  [row.login, row.display_name, row.project, row.port, row.branch].join(' ').toLowerCase().includes(search.value.trim().toLowerCase())));
+async function refresh() {
+  if (loading.value || disposed) return;
+  loading.value = true;
+  const startedAt = performance.now();
+  try {
+    const result = await api<Snapshot>('/api/admin/preview-ports/runtime');
+    if (disposed) return;
+    snapshot.value = result; receivedAt = startedAt; clock.value = performance.now();
+    serverAge = Date.parse(result.sampled_at); error.value = '';
+  } catch (e) { if (!disposed) error.value = e instanceof Error ? e.message : String(e); }
+  finally { loading.value = false; }
 }
-
-/** 空闲段的末端由 `pool.block_size` 推导（响应只给起点）；块大小缺失 ⇒ 只显示起点，不编造末端。 */
-function freeLabel(start: number): string {
-  return formatBlockLabel(start, blockEnd(start, blockSize.value));
-}
-
-function occupiedLabel(block: PreviewOccupiedBlock): string {
-  return formatBlockLabel(block.start, block.end ?? blockEnd(block.start, blockSize.value));
-}
-
-function issueText(key: UsageIssueKey): string {
-  return t(`admin.previewPool.issue.${key}`);
-}
-
 onMounted(() => {
-  // 唯一触发点（判据①）。store 的 action 自己 catch ⇒ 这里不会产生未捕获拒绝（AGENTS.md §4 的 rc=1 坑）。
-  void admin.loadPreviewUsage();
+  void refresh();
+  poll = setInterval(() => { if (!document.hidden) void refresh(); }, 15000);
+  tick = setInterval(() => { clock.value = performance.now(); }, 1000);
 });
+onBeforeUnmount(() => { disposed = true; clearInterval(poll); clearInterval(tick); });
 </script>
-
 <template>
-  <section data-test="preview-pool-usage" class="grid gap-3">
-    <header>
-      <h2 class="text-lg font-medium">{{ t('admin.previewPool.title') }}</h2>
-      <p class="mt-1 text-xs text-black/60">{{ t('admin.previewPool.intro') }}</p>
-    </header>
-
-    <p v-if="loading" data-test="usage-loading" class="text-sm text-black/60" role="status">
-      {{ t('admin.previewPool.loading') }}
-    </p>
-    <!-- 判据⑥：错误面 = 既有 .syserr 形态；服务端 message 原文（不翻译），前缀本地化 -->
-    <p v-if="error" data-test="usage-error" class="syserr text-sm" role="alert">{{ error }}</p>
-
-    <!-- 判据③：「还没请求」与「请求到了但一个都没有」是两种不同的画面 -->
-    <p v-if="!loaded && !loading && !error" data-test="usage-not-loaded" class="text-sm text-black/60">
-      {{ t('admin.previewPool.notLoaded') }}
-    </p>
-
-    <template v-if="loaded">
-      <p data-test="usage-pool" class="text-sm">
-        <template v-if="pool">
-          {{ t('admin.previewPool.poolRange', {
-            start: pool.start, end: pool.end, size: pool.blockSize, total: pool.totalBlocks,
-          }) }}
-        </template>
-        <template v-else>{{ t('admin.previewPool.poolMissing') }}</template>
-      </p>
-
-      <p v-if="issues.length > 0" data-test="usage-inconsistent" class="syserr text-sm" role="alert">
-        {{ t('admin.previewPool.inconsistent', {
-          issues: issues.map(issueText).join(t('admin.previewPool.issueSep')),
-        }) }}
-      </p>
-
-      <section data-test="usage-summary" class="rounded-lg border border-black/10 p-3">
-        <h3 class="text-sm font-semibold">{{ t('admin.previewPool.summaryTitle') }}</h3>
-        <dl class="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
-          <div>
-            <dt class="text-xs text-black/55">{{ t('admin.previewPool.summaryTotal') }}</dt>
-            <dd data-test="summary-total">{{ numText(summary.totalBlocks) }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs text-black/55">{{ t('admin.previewPool.summaryFree') }}</dt>
-            <dd data-test="summary-free">{{ numText(summary.free) }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs text-black/55">{{ t('admin.previewPool.summaryPartial') }}</dt>
-            <dd data-test="summary-partial">{{ numText(summary.partial) }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs text-black/55">{{ t('admin.previewPool.summaryOccupied') }}</dt>
-            <dd data-test="summary-occupied">{{ numText(summary.occupied) }}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <!-- 判据⑤：partial 独立成块（显眼、且文案说清「选段要避开」），绝不并进 free/occupied -->
-      <section
-        v-if="summary.partial !== null && summary.partial > 0"
-        data-test="usage-partial"
-        class="rounded-lg border border-amber-400 bg-amber-50 p-3"
-        role="alert"
-      >
-        <h3 class="text-sm font-semibold text-amber-900">
-          {{ t('admin.previewPool.partialTitle', { count: summary.partial }) }}
-        </h3>
-        <p class="mt-1 text-sm text-amber-900">{{ t('admin.previewPool.partialBody') }}</p>
-      </section>
-
-      <section data-test="usage-occupied" class="rounded-lg border border-black/10 p-3">
-        <h3 class="text-sm font-semibold">{{ t('admin.previewPool.occupiedTitle', { count: occupiedBlocks.length }) }}</h3>
-        <p v-if="!usage?.occupiedPresent" data-test="occupied-missing" class="mt-1 text-sm text-black/60">
-          {{ t('admin.previewPool.occupiedMissing') }}
-        </p>
-        <p v-else-if="occupiedBlocks.length === 0" data-test="occupied-empty" class="mt-1 text-sm text-black/60">
-          {{ t('admin.previewPool.occupiedEmpty') }}
-        </p>
-        <ul v-else class="mt-1 grid gap-1 text-sm">
-          <li
-            v-for="block in occupiedBlocks"
-            :key="block.start"
-            data-test="occupied-block"
-            class="flex flex-wrap gap-x-2 border-b border-black/5 pb-1 last:border-b-0"
-          >
-            <span class="font-mono" data-test="occupied-block-range">{{ occupiedLabel(block) }}</span>
-            <span data-test="occupied-block-count" class="text-black/60">
-              {{ block.occupiedCount === null
-                ? t('admin.previewPool.occupiedCountUnknown')
-                : t('admin.previewPool.occupiedCount', { count: block.occupiedCount }) }}
-            </span>
-            <span data-test="occupied-block-names">
-              {{ block.fdeNames.length > 0
-                ? t('admin.previewPool.occupiedBy', { names: block.fdeNames.join(', ') })
-                : t('admin.previewPool.occupiedByUnknown') }}
-            </span>
-          </li>
-        </ul>
-      </section>
-
-      <section data-test="usage-free" class="rounded-lg border border-black/10 p-3">
-        <h3 class="text-sm font-semibold">
-          {{ t('admin.previewPool.freeTitle', { count: freeBlocks.items.length }) }}
-        </h3>
-        <p v-if="!usage?.freePresent" data-test="free-missing" class="mt-1 text-sm text-black/60">
-          {{ t('admin.previewPool.freeMissing') }}
-        </p>
-        <p v-else-if="freeBlocks.items.length === 0" data-test="free-empty" class="mt-1 text-sm text-black/60">
-          {{ t('admin.previewPool.freeEmpty') }}
-        </p>
-        <ul v-else class="mt-1 flex flex-wrap gap-1 text-sm">
-          <li
-            v-for="start in freeBlocks.items"
-            :key="start"
-            data-test="free-block"
-            class="rounded border border-black/15 px-1.5 py-0.5 font-mono"
-          >{{ freeLabel(start) }}</li>
-        </ul>
-        <!-- 判据③：has_more 必须说清「只显示前 N 段，还有更多」+ 把 limit 显示出来 -->
-        <p
-          v-if="freeBlocks.hasMore === true"
-          data-test="free-more"
-          class="mt-1 text-sm text-amber-900"
-          role="status"
-        >{{ freeBlocks.limit === null
-          ? t('admin.previewPool.freeMoreNoLimit', { shown: freeBlocks.items.length })
-          : t('admin.previewPool.freeMore', { shown: freeBlocks.items.length, limit: freeBlocks.limit }) }}</p>
-      </section>
-    </template>
+  <section data-test="preview-pool-usage" class="runtime-panel">
+    <div class="table-toolbar">
+      <span class="result-count">{{ en ? 'Listening' : '正在监听' }} <strong>{{ fresh.length }}</strong></span>
+      <ElInput v-model="search" :prefix-icon="Search" clearable :placeholder="en ? 'User, project or port' : '搜索用户、项目或端口'" :aria-label="en ? 'Search listeners' : '搜索运行端口'" />
+      <ElButton :icon="Refresh" :loading="loading" @click="refresh">{{ en ? 'Refresh' : '刷新' }}</ElButton>
+    </div>
+    <ElAlert v-if="error" data-test="usage-error" :title="error" type="error" :closable="false" show-icon />
+    <p v-if="loading && !snapshot" role="status">{{ en ? 'Loading…' : '正在读取…' }}</p>
+    <ElTable v-else :data="rows" row-key="id" class="runtime-table" data-test="runtime-table">
+      <ElTableColumn :label="en ? 'User' : '用户'" min-width="200"><template #default="{ row }"><div class="identity-cell"><strong>{{ row.login }}</strong><span>{{ row.display_name }}</span></div></template></ElTableColumn>
+      <ElTableColumn :label="en ? 'Project' : '项目'" min-width="190"><template #default="{ row }"><strong>{{ row.project || (en ? 'Unidentified' : '未识别项目') }}</strong><div v-if="row.branch" class="cell-secondary">{{ row.branch }}</div></template></ElTableColumn>
+      <ElTableColumn :label="en ? 'Port' : '端口'" width="110"><template #default="{ row }"><code class="port-number">{{ row.port }}</code></template></ElTableColumn>
+      <ElTableColumn :label="en ? 'Status' : '状态'" width="125"><template #default><ElTag type="success" effect="light">{{ en ? 'Listening' : '监听中' }}</ElTag></template></ElTableColumn>
+      <ElTableColumn :label="en ? 'Preview route' : '预览路由'" min-width="125"><template #default="{ row }"><span :class="{ 'cell-secondary': !row.routed }">{{ row.routed ? (en ? 'Allocated' : '已分配') : (en ? 'Not allocated' : '未分配') }}</span></template></ElTableColumn>
+      <template #empty><ElEmpty :image-size="64" :description="search ? (en ? 'No matching listeners' : '没有匹配的记录') : (en ? 'No recent listener observations' : '暂无新鲜的端口监听记录')" /></template>
+    </ElTable>
+    <footer class="runtime-footer">{{ en ? 'Refreshes every 15s · Container ports' : '每 15 秒更新 · 容器内端口' }}<span v-if="snapshot && snapshot.total > snapshot.limit"> · {{ en ? 'Showing first' : '仅展示前' }} {{ snapshot.limit }} / {{ snapshot.total }}</span></footer>
   </section>
 </template>

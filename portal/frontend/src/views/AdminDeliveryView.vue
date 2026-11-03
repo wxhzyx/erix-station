@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton, ElCard, ElInput, ElSelect, ElOption, ElUpload, ElForm, ElFormItem, ElTable, ElTableColumn, ElTag } from 'element-plus';
 import { onMounted, ref } from 'vue';
 import { api } from '../api';
 import ModalShell from '../components/ModalShell.vue';
@@ -35,7 +36,6 @@ async function action(fn:()=>Promise<void>) {
   try { await fn(); } catch(e) {error.value=e instanceof Error?e.message:String(e);} finally {busy.value=false;}
 }
 onMounted(()=>action(load));
-function pick(event:Event) { archive.value=(event.target as HTMLInputElement).files?.[0]??null; }
 async function upload() { await action(async()=>{
   if(!archive.value) throw new Error('请选择 ZIP 开发交付包');
   const response=await fetch(`/api/admin/delivery-packages?name=${encodeURIComponent(packageName.value)}&filename=${encodeURIComponent(archive.value.name)}`,
@@ -59,27 +59,46 @@ async function review(id:string,approve:boolean) { await action(async()=>{
 <template>
   <div class="delivery">
     <p v-if="error" role="alert" class="error">{{error}}</p><p v-if="message" role="status" class="console-success">{{message}}</p>
-    <div v-if="view === 'delivery'" class="delivery-workflow"><section class="console-card"><span class="page-eyebrow">01 / PACKAGE</span><h2>开发交付包</h2><p>上传需求、开发规范、Agent 指令和调试资料。无需提供源码。</p>
-      <form @submit.prevent="upload"><label>交付包名称<input v-model="packageName" required maxlength="150"></label>
-        <label>ZIP 文件（最多 50 MB）<input type="file" accept=".zip" required @change="pick"></label><button :disabled="busy">上传交付包</button></form>
-    </section>
-    <section class="console-card"><span class="page-eyebrow">02 / ASSIGN</span><h2>下发项目</h2><form @submit.prevent="assign">
-      <label>接收用户<select v-model="userId" required :disabled="busy"><option value="" disabled>选择用户</option><option v-for="u in users" :key="u.id" :value="u.id">{{u.display_name||u.login}} · {{u.login}}</option></select></label>
-      <label>开发交付包<select v-model="packageId" required><option value="" disabled>选择交付包</option><option v-for="p in packages" :key="p.id" :value="p.id">{{p.name}}（{{p.manifest.length}} 个文件）</option></select></label>
-      <label>项目名称<input v-model="projectName" required pattern="[a-z0-9][a-z0-9_-]{0,62}" placeholder="例如 crg-development"></label>
-      <label>补充开发要求<textarea v-model="instructions" maxlength="10000" rows="3" /></label>
-      <button :disabled="busy">下发并创建用户私有 Git 仓库</button></form>
-    </section>
+    <div v-if="view === 'delivery'" class="delivery-workflow">
+      <ElCard shadow="never"><template #header><h2>开发交付包</h2></template>
+        <ElForm label-position="top" @submit.prevent="upload">
+          <ElFormItem label="交付包名称"><ElInput v-model="packageName" required maxlength="150" placeholder="例如：设备看板开发规范" /></ElFormItem>
+          <ElFormItem label="ZIP 文件 · 最大 50 MB"><ElUpload class="package-upload" drag :auto-upload="false" :limit="1" accept=".zip" :on-change="file => archive = file.raw ?? null" :on-remove="() => archive = null"><div class="el-upload__text">拖入交付包，或<em>点击选择</em></div></ElUpload></ElFormItem>
+          <ElButton type="primary" native-type="submit" :loading="busy" :disabled="!archive || !packageName.trim()">上传交付包</ElButton>
+        </ElForm>
+      </ElCard>
+      <ElCard shadow="never"><template #header><h2>下发项目</h2></template>
+        <ElForm label-position="top" @submit.prevent="assign">
+          <ElFormItem label="接收用户"><ElSelect v-model="userId" filterable :disabled="busy" placeholder="选择用户"><ElOption v-for="u in users" :key="u.id" :value="u.id" :label="`${u.display_name||u.login} · ${u.login}`" /></ElSelect></ElFormItem>
+          <ElFormItem label="开发交付包"><ElSelect v-model="packageId" filterable placeholder="选择交付包"><ElOption v-for="p in packages" :key="p.id" :value="p.id" :label="`${p.name}（${p.manifest.length} 个文件）`" /></ElSelect></ElFormItem>
+          <ElFormItem label="项目名称"><ElInput v-model="projectName" required pattern="[a-z0-9][a-z0-9_-]{0,62}" placeholder="例如 crg-development" /></ElFormItem>
+          <ElFormItem label="补充开发要求"><ElInput v-model="instructions" type="textarea" maxlength="10000" :rows="3" /></ElFormItem>
+          <ElButton type="primary" native-type="submit" :loading="busy" :disabled="!userId || !packageId || !projectName">下发项目</ElButton>
+        </ElForm>
+      </ElCard>
     </div>
-    <section v-if="view === 'quota'" class="console-card"><h2>用户每日额度</h2><p>选择用户设置上限，聊天与开发共享该额度。</p><label>配置用户<select v-model="userId" :disabled="busy" @change="loadQuota"><option value="" disabled>选择用户</option><option v-for="u in users" :key="u.id" :value="u.id">{{u.display_name||u.login}} · {{u.login}}</option></select></label>
-      <p v-if="!userId" class="empty-state-small">选择用户后查看今日用量并调整额度。</p><p v-if="quota">今日已用 {{quota.used.toLocaleString()}}，调用中预留 {{quota.reserved.toLocaleString()}}。每天北京时间 00:00 重置。</p>
-      <form v-if="userId" @submit.prevent="saveQuota"><label>每日上限（输入＋输出 Token）<input :disabled="busy" v-model.number="limit" type="number" min="0" max="1000000000" step="1" required></label><button :disabled="busy||!quota">保存额度</button></form></section>
-    <section v-if="view === 'quota'" class="console-card table-card"><h2>额度升级申请</h2><p v-if="!requests.length">暂无申请</p><table v-else><thead><tr><th>用户</th><th>申请日额度</th><th>原因</th><th>状态</th><th>处理</th></tr></thead><tbody>
-      <tr v-for="r in requests" :key="r.id"><td>{{r.login}}</td><td>{{Number(r.requested_limit).toLocaleString()}}</td><td>{{r.reason}}</td><td>{{r.status==='pending'?'待审批':r.status==='approved'?'已批准':'已拒绝'}}</td><td><template v-if="r.status==='pending'"><button :disabled="busy" @click="review(r.id,true)">批准</button><button :disabled="busy" @click="review(r.id,false)">拒绝</button></template></td></tr>
-    </tbody></table></section>
-    <section v-if="view === 'delivery'" class="console-card table-card"><h2>已下发项目</h2><p v-if="!projects.length">暂无下发项目</p><table v-else><thead><tr><th>用户 / 项目</th><th>交付包</th><th>状态</th><th>处理</th></tr></thead><tbody>
-      <tr v-for="p in projects" :key="p.id"><td>{{p.login}} / {{p.name}}</td><td>{{p.package_name}}</td><td>{{p.deleted_at?'待完成清理':p.status==='ready'?'已就绪':p.status==='failed'?'失败':'处理中'}}<p v-if="p.last_error" class="error">{{p.last_error}}</p></td><td><button v-if="p.status!=='ready' && !p.deleted_at" :disabled="busy" @click="retry(p.id)">重试下发</button><a v-if="p.repo_url" :href="p.repo_url" target="_blank" rel="noopener">仓库</a><button data-test="delete-project" :disabled="busy" @click="confirmDelete(p)">{{p.deleted_at?'重试删除':'删除'}}</button></td></tr>
-    </tbody></table></section>
+    <ElCard v-if="view === 'quota'" shadow="never"><template #header><h2>用户每日额度</h2></template>
+      <ElForm label-position="top" @submit.prevent="saveQuota">
+        <ElFormItem label="配置用户"><ElSelect v-model="userId" filterable :disabled="busy" placeholder="选择用户" @change="loadQuota"><ElOption v-for="u in users" :key="u.id" :value="u.id" :label="`${u.display_name||u.login} · ${u.login}`" /></ElSelect></ElFormItem>
+        <p v-if="quota">今日已用 {{quota.used.toLocaleString()}} · 调用中 {{quota.reserved.toLocaleString()}} · 每日 00:00 重置</p>
+        <template v-if="userId"><ElFormItem label="每日 Token 上限"><ElInput :disabled="busy" v-model.number="limit" type="number" min="0" max="1000000000" step="1" required /></ElFormItem><ElButton type="primary" native-type="submit" :disabled="busy||!quota">保存额度</ElButton></template>
+      </ElForm>
+    </ElCard>
+    <ElCard v-if="view === 'quota'" shadow="never"><template #header><h2>额度升级申请</h2></template>
+      <ElTable :data="requests" empty-text="暂无申请">
+        <ElTableColumn prop="login" label="用户" min-width="130" /><ElTableColumn label="申请日额度" min-width="150"><template #default="{row}">{{Number(row.requested_limit).toLocaleString()}}</template></ElTableColumn><ElTableColumn prop="reason" label="原因" min-width="180" />
+        <ElTableColumn label="状态" width="110"><template #default="{row}"><ElTag :type="row.status==='approved'?'success':row.status==='pending'?'warning':'info'">{{row.status==='pending'?'待审批':row.status==='approved'?'已批准':'已拒绝'}}</ElTag></template></ElTableColumn>
+        <ElTableColumn label="处理" width="160"><template #default="{row}"><template v-if="row.status==='pending'"><ElButton :disabled="busy" @click="review(row.id,true)">批准</ElButton><ElButton :disabled="busy" @click="review(row.id,false)">拒绝</ElButton></template></template></ElTableColumn>
+      </ElTable>
+    </ElCard>
+    <ElCard v-if="view === 'delivery'" shadow="never"><template #header><h2>已下发项目</h2></template>
+      <ElTable :data="projects" row-key="id" empty-text="暂无下发项目">
+        <ElTableColumn label="用户 / 项目" min-width="200"><template #default="{row}"><strong>{{row.name}}</strong><div class="cell-secondary">{{row.login}}</div></template></ElTableColumn>
+        <ElTableColumn prop="package_name" label="交付包" min-width="160" />
+        <ElTableColumn label="状态" min-width="130"><template #default="{row}"><ElTag :type="row.deleted_at?'info':row.status==='ready'?'success':row.status==='failed'?'danger':'warning'">{{row.deleted_at?'待完成清理':row.status==='ready'?'已就绪':row.status==='failed'?'失败':'处理中'}}</ElTag><p v-if="row.last_error" class="error">{{row.last_error}}</p></template></ElTableColumn>
+        <ElTableColumn label="处理" min-width="200"><template #default="{row}"><ElButton v-if="row.status!=='ready' && !row.deleted_at" :disabled="busy" @click="retry(row.id)">重试下发</ElButton><a v-if="row.repo_url" :href="row.repo_url" target="_blank" rel="noopener">仓库</a><ElButton data-test="delete-project" type="danger" link :disabled="busy" @click="confirmDelete(row as Project)">{{row.deleted_at?'重试删除':'删除'}}</ElButton></template></ElTableColumn>
+      </ElTable>
+    </ElCard>
   </div>
   <ModalShell v-if="deleting" dialog-class="md:w-[36rem] p-6" label="删除交付项目" @close="!busy && (deleting=null)">
     <form class="delivery" @submit.prevent="removeProject">
@@ -87,11 +106,19 @@ async function review(id:string,approve:boolean) { await action(async()=>{
       <p>删除该项目的本地工作目录并归档会话，未推送的修改将丢失。保留 Gitea 仓库、提交历史和 LiteLLM 历史用量，不影响其他项目。正在执行的任务需要先停止。</p>
       <label>输入项目名称确认<input v-model="confirmation" data-test="project-delete-confirmation" :disabled="busy" autocomplete="off"></label>
       <p v-if="error" role="alert" class="error">{{error}}</p>
-      <button type="button" :disabled="busy" @click="deleting=null">取消</button>
-      <button data-test="confirm-project-delete" :disabled="busy || confirmation!==deleting.name">确认删除项目</button>
+      <ElButton native-type="button" :disabled="busy" @click="deleting=null">取消</ElButton>
+      <ElButton native-type="submit" data-test="confirm-project-delete" :disabled="busy || confirmation!==deleting.name">确认删除项目</ElButton>
     </form>
   </ModalShell>
 </template>
 <style scoped>
-.delivery{display:grid;gap:24px;max-width:1280px}.delivery-workflow{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:24px;align-items:start}h2{font-size:17px;font-weight:600;margin-bottom:12px}form{display:grid;gap:16px}label{display:grid;gap:8px;font-size:13px;color:var(--station-muted)}input,select,textarea{border:1px solid var(--station-line);border-radius:8px;padding:10px 12px;background:white;width:100%;min-width:0;color:var(--station-ink)}button{border:1px solid var(--station-line);border-radius:8px;padding:9px 14px;width:fit-content;margin-right:8px;font-weight:600;font-size:13px}form>button{background:var(--station-accent);color:#fff;border-color:var(--station-accent)}button:disabled{opacity:.5}table{width:100%;text-align:left;font-size:13px}th,td{padding:12px;border-bottom:1px solid var(--station-line);vertical-align:top}.error{color:#b42318}p{margin:4px 0 18px;overflow-wrap:anywhere;font-size:13px;color:var(--station-muted)}a{color:var(--station-accent)}.table-card{overflow-x:auto}@media(max-width:1100px){.delivery-workflow{grid-template-columns:1fr}}
+.delivery { display:grid; gap:20px; }
+.delivery-workflow { display:grid; grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); gap:20px; align-items:start; }
+h2 { font-size:15px; font-weight:600; }
+p { margin:8px 0; font-size:13px; color:var(--station-muted); overflow-wrap:anywhere; }
+.error { color:#b42318; }
+a { color:var(--station-accent); margin-right:16px; }
+form.delivery label { display:grid; gap:8px; }
+form.delivery input { border:1px solid var(--station-line); border-radius:6px; padding:8px; }
+@media(max-width:900px) { .delivery-workflow { grid-template-columns:1fr; } }
 </style>

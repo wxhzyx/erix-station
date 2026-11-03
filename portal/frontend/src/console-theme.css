@@ -1,0 +1,105 @@
+/* Element Plus is the shared control system. Keep project content visually quiet. */
+:root {
+  --el-color-primary: #2864dc;
+  --el-color-primary-light-3: #698fe7;
+  --el-color-primary-light-5: #94b1ee;
+  --el-color-primary-light-7: #bed0f5;
+  --el-color-primary-light-8: #d4e0f8;
+  --el-color-primary-light-9: #eaf0fc;
+  --el-color-primary-dark-2: #2050b0;
+  --el-border-radius-base: 6px;
+  --el-font-family: 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  --el-text-color-primary: #1c293d;
+  --el-text-color-regular: #475569;
+  --el-border-color: #dce3ec;
+  --el-fill-color-light: #f6f8fb;
+  --station-accent: #2864dc;
+  --station-ink: #1c293d;
+  --station-muted: #69778d;
+  --station-line: #e3e8f0;
+  --station-canvas: #f5f7fa;
+  --station-soft: #edf3ff;
+  --color-brand: #2864dc;
+  --color-brand-hover: #2050b0;
+  --color-brand-active: #1c4598;
+}
+.station-topbar { background: #fff; color: var(--station-ink); border-bottom: 1px solid var(--station-line); gap: 24px; }
+.station-topbar .brand-mark { color: #2864dc; background: #edf3ff; width: 32px; height: 32px; border-radius: 8px; font-size: 20px; justify-content: center; }
+.station-topbar .brand-mark span { display: none; }
+.station-topbar .rail-brand strong { color: #182b49; font-size: 15px; letter-spacing: -.3px; }
+.station-topbar .rail-link { color: #5d6c82; padding: 7px 11px; font-size: 13px; border: 0; }
+.station-topbar .rail-link:hover { color: #2864dc; background: #f5f7fa; }
+.station-topbar .rail-link.active { color: #2864dc; background: #eaf0fc; box-shadow: none; }
+.station-mode-switch { border-radius: 7px; padding: 3px; background: #f4f6f9; }
+.station-topbar .rail-profile { border-left: 1px solid var(--station-line); padding-left: 18px; }
+.station-topbar .rail-profile strong { color: #334155; }
+.station-topbar .rail-profile small { display: none; }
+.el-avatar { background: #eaf0fc; color: #2864dc; font-weight: 600; }
+.el-button + .el-button { margin-left: 0; }
+.el-button { font-size: 13px; font-weight: 500; }
+.el-button.is-disabled { pointer-events: auto; }
+.station-header { min-height: 60px; padding: 12px 28px; }
+.station-header h1 { font-size: 19px; font-weight: 650; }
+.admin-layout { display: block; }
+.admin-navigation { position: static; min-height: 0; padding: 0 24px; border: 0; background: #fff; overflow-x: auto; }
+.admin-navigation .el-menu { --el-menu-horizontal-height: 46px; min-width: max-content; }
+.admin-navigation .el-menu-item { padding: 0; font-size: 13px; }
+.admin-navigation .el-menu-item a { display: flex; align-items: center; height: 100%; padding: 0 18px; color: inherit; text-decoration: none; }
+.admin-content { max-width: 1600px; margin: auto; padding: 26px 28px; }
+.page-intro { margin-bottom: 18px; }
+.page-intro h2 { font-size: 20px; letter-spacing: -.3px; }
+.console-card, .el-card { border: 1px solid var(--station-line); border-radius: 8px; box-shadow: none; background: #fff; }
+.console-card { padding: 22px; }
+.el-card__header { padding: 18px 20px; }
+.el-card__header .card-heading { margin: 0; }
+.el-card__header h2 { font-size: 15px; font-weight: 600; }
+.personal-settings { max-width: 940px; padding: 28px; gap: 20px; }
+.personal-settings .setting-row { padding: 0; }
+.console-note { background: #f8fafc; border: 1px solid var(--station-line); padding: 16px 20px; }
+.console-note p { line-height: 1.6; }
+.runtime-panel { background: #fff; border: 1px solid var(--station-line); border-radius: 8px; overflow: hidden; }
+.table-toolbar { display: flex; gap: 12px; align-items: center; padding: 18px 20px; }
+.table-toolbar .el-input { max-width: 300px; margin-left: auto; }
+.result-count { font-size: 13px; color: var(--station-muted); white-space: nowrap; }
+.result-count strong { font: 600 15px 'Cascadia Code', Consolas, monospace; color: var(--station-ink); margin-left: 6px; }
+.identity-cell { display: grid; gap: 3px; }
+.identity-cell strong { font-weight: 600; }
+.identity-cell span, .cell-secondary { color: var(--station-muted); font-size: 12px; }
+.port-number { color: #2755a4; font: 600 14px 'Cascadia Code', Consolas, monospace; }
+.runtime-footer { padding: 13px 20px; color: var(--station-muted); font-size: 12px; border-top: 1px solid var(--station-line); }
+.station-admin .el-table th, .station-admin .el-table td { padding: 12px 0; }
+.station-admin .el-table .cell { padding: 0 20px; line-height: 1.6; }
+.station-admin .el-input__inner { min-height: 0; border: 0; padding: 0; box-shadow: none; }
+.station-admin .el-textarea__inner { border: 0; }
+.station-admin .el-select { width: 100%; }
+.runtime-panel .el-alert { border-radius: 0; }
+.delivery .el-card__header h2 { margin: 0; }
+.delivery .el-form-item { margin-bottom: 18px; }
+.delivery .package-upload, .delivery .el-upload, .delivery .el-upload-dragger { width: 100%; }
+.delivery .el-upload-dragger { padding: 26px 18px; }
+.delivery .el-upload__text { font-size: 13px; }
+.delivery .el-table { width: 100%; }
+.delivery .el-table .el-button { margin: 0 8px 0 0; }
+.station-admin [data-test=user-table] { table-layout: auto; }
+.station-admin [data-test=user-list] { overflow-x: auto; }
+.station-admin [data-test=user-table] td { white-space: nowrap; }
+.station-admin [data-test=user-table] th { font-size: 12px; }
+.station-chat .chat-sidebar, .station-workbench aside { border-color: var(--station-line); }
+@media(max-width:767px) {
+  .station-topbar { gap: 10px; }
+  .station-topbar .rail-brand strong { display: none; }
+  .admin-navigation { padding: 0 8px; }
+  .admin-navigation .el-menu-item a { padding: 0 12px; }
+  .admin-content, .personal-settings { padding: 18px 14px; }
+  .table-toolbar { flex-wrap: wrap; padding: 14px; }
+  .table-toolbar .el-input { order: 3; max-width: none; width: 100%; }
+  .table-toolbar .el-button { margin-left: auto; }
+  .console-card { padding: 16px; }
+}
+
+.station-dialog .el-dialog__header { display:none; }
+.station-dialog .el-dialog__body > div { width:100%; max-height:80dvh; overflow:auto; }
+.station-dialog { padding:12px; border-radius:10px; }
+
+.approval-row.el-button { height:auto; white-space:normal; justify-content:flex-start; }
+.approval-row.el-button > span { display:block; min-width:0; width:100%; text-align:left; }

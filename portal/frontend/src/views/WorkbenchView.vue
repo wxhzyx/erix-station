@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus';
 // 工作台壳（P2）：侧栏（移动端抽屉）+ 消息流 + composer + 深链/自动跟随。
 // 深链 #/session/<id> 已迁入 vue-router（/session/:id 路由，issue #55 B1 语义平移）：
 //   列表内直开 / 跨项目切项目后打开（写回深链）/ 404 静默回退清路由 / 其他错误保留路由 + 报错。
@@ -227,20 +228,20 @@ function jumpToLatest() {
   <!-- 拖拽期间 select-none 防选中文本 -->
   <div class="station-work h-screen flex flex-col" :class="sidebar.dragging.value && 'select-none'">
     <header class="station-header flex flex-wrap items-center gap-3">
-      <button
+      <ElButton native-type="submit"
         class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5 md:hidden"
         :aria-label="t('workbench.openNavigation')"
         @click="drawerOpen = !drawerOpen"
-      >{{ t('workbench.nav') }}</button>
+      >{{ t('workbench.nav') }}</ElButton>
       <div class="work-heading"><span class="page-eyebrow">WORKSPACE / DEVELOP</span><h1>{{ locale === 'en' ? 'Development workspace' : '开发工作台' }}</h1></div>
       <!-- issue #84 P5.4：cwd 徽标（📁 短名；hover 显示全路径；点击复制） -->
-      <button
+      <ElButton
         v-if="store.dirCwd"
-        type="button"
+        native-type="button"
         class="rounded-md border border-black/10 px-2 py-0.5 text-sm hover:bg-black/5"
         :title="t('workbench.cwdCopyTitle', { cwd: store.dirCwd })"
         @click="copyCwd"
-      >📁 {{ dirShortName }}<span v-if="copied" class="text-black/40"> {{ t('common.copied') }}</span></button>
+      >📁 {{ dirShortName }}<span v-if="copied" class="text-black/40"> {{ t('common.copied') }}</span></ElButton>
       <!-- issue #359 P0b：收工灯（颜色不承重：旁边就有文字；完整口径在 title/aria-label） -->
       <GitLightBadge
         v-if="store.dirCwd"
@@ -253,10 +254,10 @@ function jumpToLatest() {
       />
       <span class="flex-1"></span>
       <router-link to="/settings?tab=usage" class="header-usage">{{ locale === 'en' ? 'Usage & quota' : '用量与额度' }}</router-link>
-      <button
+      <ElButton native-type="submit"
         class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5"
         @click="onLogout"
-      >{{ t('common.logout') }}</button>
+      >{{ t('common.logout') }}</ElButton>
     </header>
 
     <main class="flex flex-1 min-h-0">
@@ -317,12 +318,12 @@ function jumpToLatest() {
           @close="pickerOpen = false"
         />
         <!-- issue #55 A2：「↓ 最新」悬浮按钮 -->
-        <button
+        <ElButton
           v-if="showToLatest"
-          type="button"
+          native-type="button"
           class="absolute right-4 bottom-24 z-10 rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm shadow text-brand"
           @click="jumpToLatest"
-        >{{ t('workbench.toLatest') }}</button>
+        >{{ t('workbench.toLatest') }}</ElButton>
       </section>
     </main>
   </div>
