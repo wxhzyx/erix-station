@@ -104,7 +104,7 @@ export async function sendChatMessage(pool, userId, id, body, { resolveProvider,
     if (Buffer.byteLength(JSON.stringify(messages)) > CHAT_LIMITS.contextBytes) fail('聊天上下文过大，请新建聊天');
     const provider = await resolveProvider(userId, db);
     if (!provider?.api_key || !provider?.base_url || !provider?.model) throw new ChatModeError('llm_not_configured', '聊天模型尚未配置，请联系管理员', { httpStatus: 409 });
-    if (provider.supportsImages === false && [...previous, user].some((m) => m.attachments?.some((f) => IMAGE_MIMES.has(f.mime_type)))) throw new ChatModeError('validation_failed', '当前聊天模型不支持图片，请选择支持图片的模型');
+    if (provider.supportsImages === false && [...previous, user].some((m) => m.attachments?.some((f) => IMAGE_MIMES.has(f.mime_type)))) throw new ChatModeError('validation_failed', '当前聊天模型不支持图片，请联系管理员分配支持图片的模型');
     let response;
     try {
       response = await complete({ provider, messages, maxTokens: 4096, timeoutMs: 60000, fetchImpl, log: null });

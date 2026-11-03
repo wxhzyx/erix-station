@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { api } from '../api';
 import { bytesBase64, extractDocument, isDocument, readBase64, rejectLegacyDocument } from '../lib/documentAttachments';
 import { useAuthStore } from '../stores/auth';
+import { useFileDrop } from '../lib/useFileDrop';
 import StationShell from '../components/StationShell.vue';
 interface Conversation { id: string; title: string }
 interface Attachment { name: string; mime_type: string; data_base64: string; warnings?: string[] }
@@ -14,9 +15,10 @@ const en = computed(() => locale.value === 'en');
 const conversations = ref<Conversation[]>([]); const messages = ref<Message[]>([]); const selected = ref('');
 const draft = ref(''); const files = ref<Attachment[]>([]); const error = ref(''); const busy = ref(false); const reading = ref(false);
 let epoch = 0; let controller = new AbortController(); let retry: { fingerprint: string; id: string } | undefined;
+const fileDrop = useFileDrop(addFiles, () => busy.value || reading.value, message => { error.value = message; });
 const base = '/api/chat/conversations';
 const accept = '.txt,.md,.csv,.js,.html,.css,.json,.xml,.png,.jpg,.jpeg,.webp,.pdf,.docx,.xlsx,.pptx';
-function reset() { epoch++; controller.abort(); controller = new AbortController(); selected.value = ''; messages.value = []; draft.value = ''; files.value = []; error.value = ''; busy.value = false; reading.value = false; retry = undefined; }
+function reset() { fileDrop.reset(); epoch++; controller.abort(); controller = new AbortController(); selected.value = ''; messages.value = []; draft.value = ''; files.value = []; error.value = ''; busy.value = false; reading.value = false; retry = undefined; }
 async function refreshList(token: number) { const result = await api<{ conversations: Conversation[] }>(base, { signal: controller.signal }); if (token === epoch) conversations.value = result.conversations; }
 async function open() {
   const id = typeof route.params.id === 'string' ? route.params.id : '';
@@ -40,6 +42,9 @@ function fileType(file: File) {
 }
 async function upload(event: Event) {
   const input = event.target as HTMLInputElement; const chosen = Array.from(input.files ?? []); input.value = '';
+  await addFiles(chosen);
+}
+async function addFiles(chosen: File[]) {
   if (!chosen.length || reading.value || busy.value) return;
   const token = epoch; reading.value = true; error.value = '';
   try {
@@ -96,7 +101,8 @@ onUnmounted(reset);
 </script>
 <template>
   <StationShell area="chat">
-  <div class="station-chat flex h-screen flex-col">
+  <div class="station-chat file-drop-region flex h-screen flex-col" :class="{ 'file-dragging': fileDrop.dragging.value }" v-on="fileDrop.events">
+    <div v-if="fileDrop.dragging.value" class="file-drop-overlay" role="status">{{ en ? 'Drop files to attach' : '松开鼠标，添加附件' }}</div>
     <header class="station-header flex flex-wrap items-center gap-3">
       <div><span class="page-eyebrow">WORKSPACE / CHAT</span><h1>{{ en ? 'AI conversation' : 'AI 对话' }}</h1></div><span class="flex-1"></span>
       <router-link to="/settings?tab=usage" class="header-usage">{{ en ? 'Usage & quota' : '用量与额度' }}</router-link>
@@ -125,7 +131,7 @@ onUnmounted(reset);
           <label class="station-secondary cursor-pointer rounded-lg px-3 py-2 text-sm">{{ reading ? (en ? 'Reading…' : '读取中…') : (en ? 'Attach files' : '上传文件') }}<input type="file" multiple :accept="accept" :disabled="busy || reading" class="sr-only" @change="upload" /></label>
           <button class="station-primary rounded-xl px-5 py-2 text-white disabled:opacity-40" :disabled="busy || reading || (!draft.trim() && !files.length)">{{ en ? 'Send' : '发送' }}</button>
         </div>
-        <p class="text-xs text-black/50">{{ en ? 'Text / images / PDF / DOCX / XLSX / PPTX · 5 files · documents 8 MiB each, extracted text 64 KiB each · text/images 1 MiB each · total 4 MiB · No scanned PDF OCR' : '文本 / 图片 / PDF / DOCX / XLSX / PPTX · 最多 5 个 · 文档单个 8 MiB，提取文本 64 KiB · 文本/图片单个 1 MiB · 总计 4 MiB · 扫描 PDF 暂无 OCR' }}</p>
+        <p class="text-xs text-black/50">{{ en ? 'Drop files here · Text, images, PDF and Office · Up to 5 files' : '文件可直接拖入 · 支持文本、图片、PDF 和 Office · 最多 5 个' }}</p>
       </form>
     </main>
   </div>

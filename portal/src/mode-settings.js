@@ -20,7 +20,7 @@ export async function modeCatalog(gateway) {
   return catalog.map((p) => ({ id: p.id, name: p.name,
     models: p.models.map((m) => ({ id: m.id, model_id: m.model_id,
       model_name: m.model_name, name: m.name, display_name: m.name,
-      type: m.type, enabled: m.enabled, tool_calling: m.tool_calling })) }));
+      type: m.type, enabled: m.enabled, tool_calling: m.tool_calling, supports_vision: m.supports_vision })) }));
 }
 
 async function activeUser(pool, userId) {
@@ -132,7 +132,7 @@ export async function resolveChatLlmProvider(pool, userId, { gatewayUrl, gateway
     throw new LlmError('llm_config_stale', '聊天模型已变更，请联系管理员更新配置', { httpStatus: 409 });
   }
   if (!gatewayUrl || !row.api_key) throw new LlmError('llm_not_configured', '聊天 API 未配置', { httpStatus: 409 });
-  return { base_url: gatewayUrl, api_key: row.api_key, model: row.model_name, supportsImages: model.type === 'vision' };
+  return { base_url: gatewayUrl, api_key: row.api_key, model: row.model_name, supportsImages: model.supports_vision === true };
 }
 
 /** Disabled users cannot send; revoke their server-only virtual key as well.

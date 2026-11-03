@@ -159,3 +159,29 @@ describe('document extraction', () => {
     expect(mockApi.mock.calls.some(([url]) => url === '/api/attachments/extract')).toBe(false);
   });
 });
+
+
+describe('chat file drop', () => {
+  it('stages dropped original image bytes without document extraction or automatic send', async () => {
+    const { wrapper } = await setup();
+    const dataTransfer = { types:['Files'], files:[new File(['image bytes'], 'screen.png', {type:'image/png'})] };
+    await wrapper.get('.file-drop-region').trigger('dragenter', {dataTransfer});
+    expect(wrapper.text()).toContain('松开鼠标');
+    await wrapper.get('textarea').trigger('drop', {dataTransfer});
+    await new Promise(r=>setTimeout(r,30));await flushPromises();
+    expect(wrapper.text()).toContain('screen.png');
+    expect(wrapper.text()).not.toContain('松开鼠标');
+    expect(mockApi.mock.calls.some(([,opts])=>opts?.method === 'POST')).toBe(false);
+    await wrapper.get('form').trigger('submit');await flushPromises();
+    const body=JSON.parse(mockApi.mock.calls.find(([url])=>url.endsWith('/messages'))![1]!.body as string);
+    expect(body.attachments[0]).toMatchObject({name:'screen.png',mime_type:'image/png',data_base64:btoa('image bytes')});
+    expect(mockApi.mock.calls.some(([url])=>url==='/api/attachments/extract')).toBe(false);
+  });
+  it('applies picker limits to drops and rejects folders', async () => {
+    const {wrapper}=await setup();const zone=wrapper.get('.file-drop-region');
+    await zone.trigger('drop',{dataTransfer:{types:['Files'],files:Array.from({length:6},(_,i)=>new File(['x'],`${i}.txt`))}});
+    expect(wrapper.get('[role=alert]').text()).toContain('最多 5');
+    await zone.trigger('drop',{dataTransfer:{types:['Files'],files:[],items:[{webkitGetAsEntry:()=>({isDirectory:true})}]}});
+    expect(wrapper.get('[role=alert]').text()).toContain('不支持文件夹');
+  });
+});

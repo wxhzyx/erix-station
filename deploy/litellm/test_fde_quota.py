@@ -1,4 +1,6 @@
 import concurrent.futures
+import copy
+import base64
 import os
 import tempfile
 import unittest
@@ -63,6 +65,36 @@ class QuotaTests(unittest.TestCase):
         self.assertEqual(self.ledger.snapshot("a")["reserved"], 200)
         with self.assertRaises(HTTPException):
             prompt_upper_bound({"messages":[{"content":[{"type":"image_url"}]}]})
+
+    def test_images_reserve_context_then_settle_actual_usage_without_mutation(self):
+        data = {"model":"fde-station-qwen3.8-flash-next", "messages":[{"role":"user","content":[
+            {"type":"text","text":"read image"},
+            {"type":"image_url","image_url":{"url":"data:image/png;base64,"+base64.b64encode(b"synthetic image").decode()}}
+        ]}]}
+        before = copy.deepcopy(data)
+        bound = prompt_upper_bound(data)
+        self.assertEqual(bound,131072)
+        self.assertEqual(data,before)
+        reservation,_ = self.ledger.reserve("a",bound,512)
+        self.assertEqual(self.ledger.snapshot("a")["reserved"],131584)
+        self.ledger.settle(reservation,213)
+        self.assertEqual(self.ledger.snapshot("a")["used"],213)
+        self.assertEqual(self.ledger.snapshot("a")["reserved"],0)
+        self.ledger.set_limit("b",131072)
+        with self.assertRaises(HTTPException):self.ledger.reserve("b",bound,512)
+        data["model"]="unconfigured-model"
+        with self.assertRaises(HTTPException):prompt_upper_bound(data)
+
+    def test_rejects_remote_invalid_oversized_images_and_unknown_blocks(self):
+        for url in ["http://localhost/private", "data:image/png;base64,###", "data:image/png;base64,", "data:image/png;base64,"+"a"*1398105]:
+            with self.assertRaises(HTTPException):
+                prompt_upper_bound({"model":"fde-station-qwen3.8-flash-next","messages":[{"content":[{"type":"image_url","image_url":{"url":url}}]}]})
+        image={"type":"image_url","image_url":{"url":"data:image/png;base64,eA=="}}
+        with self.assertRaises(HTTPException):
+            prompt_upper_bound({"model":"fde-station-qwen3.8-flash-next","messages":[{"content":[image]*6}]})
+        with self.assertRaises(HTTPException):
+            prompt_upper_bound({"messages":[{"content":[{"type":"file","file":{"file_data":"anything"}}]}]})
+
 
 
 if __name__ == "__main__":

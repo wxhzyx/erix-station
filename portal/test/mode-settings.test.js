@@ -166,3 +166,23 @@ test('compensation failure still rolls back before returning sanitized recovery 
   await assert.rejects(setModeSettings(f.pool,'alice','chat',selection,{gateway:f.gateway}),e=>e.code==='llm_config_recovery_required'&&!e.message.includes(secret));
   assert.deepEqual(events,['chat-renamed','chat-one','rollback']);
 });
+
+
+test('Qwen text models use explicit gateway vision capability, with false overriding legacy type', async () => {
+  const f = fixture();
+  f.models[0].model_info.supports_vision = true;
+  await setModeSettings(f.pool,'alice','chat',selection,{gateway:f.gateway});
+  const resolve = () => resolveChatLlmProvider(f.pool,'alice',{gateway:f.gateway,gatewayUrl:'https://gateway.invalid'});
+  assert.equal((await modeCatalog(f.gateway))[0].models[0].type,'text');
+  assert.equal((await resolve()).supportsImages,true);
+  f.models[0].model_info.supports_vision = false;
+  f.models[0].model_info.type = 'vision';
+  assert.equal((await resolve()).supportsImages,false);
+  delete f.models[0].model_info.supports_vision;
+  assert.equal((await resolve()).supportsImages,true);
+  f.models[0].model_info.type = 'text';
+  f.models[0].model_info.metadata.supports_vision = true;
+  assert.equal((await resolve()).supportsImages,true);
+  delete f.models[0].model_info.metadata.supports_vision;
+  assert.equal((await resolve()).supportsImages,false);
+});
