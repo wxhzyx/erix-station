@@ -112,10 +112,10 @@ describe('Admin console routing and layout', () => {
     const { wrapper, router } = await mountAdmin('/admin');
     expect(router.currentRoute.value.path).toBe('/admin/users');
     expect(wrapper.get('h1').text()).toBe('FDE Station 管理台');
-    expect(wrapper.get('header').text()).toContain('root（admin）');
-    expect(wrapper.get('header').text()).toContain('返回工作台');
+    expect(wrapper.get('.rail-profile').text()).toContain('Root');
+    expect(wrapper.get('.station-mode-switch').text()).toContain('工作模式');
     expect(wrapper.get('header').text()).toContain('登出');
-    expect(wrapper.find('a[aria-current="page"]').text()).toBe('用户管理');
+    expect(wrapper.find('.admin-navigation a[aria-current="page"]').text()).toBe('成员与工位');
     wrapper.unmount();
   });
 
@@ -125,7 +125,7 @@ describe('Admin console routing and layout', () => {
       await wrapper.find('a[href="/admin/llm"]').trigger('click');
       await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/admin/llm'));
       await flushPromises();
-      expect(wrapper.find('a[aria-current="page"]').text()).toBe('LLM 管理');
+      expect(wrapper.find('.admin-navigation a[aria-current="page"]').text()).toBe('API 与模型');
 
       wrapper.unmount();
       const refreshedRouter = createAppRouter(createMemoryHistory());
@@ -134,7 +134,7 @@ describe('Admin console routing and layout', () => {
       const refreshed = mount(App, { global: { plugins: [pinia, refreshedRouter, i18n] }, attachTo: document.body });
       await flushPromises();
       expect(refreshedRouter.currentRoute.value.path).toBe('/admin/llm');
-      expect(refreshed.find('a[aria-current="page"]').text()).toBe('LLM 管理');
+      expect(refreshed.find('.admin-navigation a[aria-current="page"]').text()).toBe('API 与模型');
       refreshed.unmount();
     } finally {
       wrapper.unmount();
@@ -1634,9 +1634,10 @@ describe('AdminView · FDE 用户', () => {
     auth.user = { ...ADMIN_USER, fde_name: 'alice' };
     await flushPromises();
     expect(wrapper.get('h1').text()).toBe('FDE Station Admin Console');
-    expect(wrapper.get('header').text()).toContain('root (admin / alice)');
-    expect(wrapper.get('header').text()).toContain('← Back to workbench');
-    expect(wrapper.find('a[aria-current="page"]').text()).toBe('User management');
+    expect(wrapper.get('.rail-profile strong').text()).toBe('Root');
+    expect(wrapper.get('.rail-profile small').text()).toBe('Administrator');
+    expect(wrapper.get('.station-mode-switch').text()).toContain('Work');
+    expect(wrapper.find('.admin-navigation a[aria-current="page"]').text()).toBe('Members & workstations');
     wrapper.unmount();
   });
 });

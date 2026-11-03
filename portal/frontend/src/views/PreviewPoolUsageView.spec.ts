@@ -113,7 +113,8 @@ function usageCalls(fetchMock: ReturnType<typeof vi.fn>) {
  * 路由级组件是 `() => import(...)`：点完要等动态 import 解析完、视图真的挂上（
  * 用目标视图自己的锚点等，而不是数固定轮次的 flushPromises）。 */
 async function clickTab(wrapper: VueWrapper, label: string, awaitSelector?: string) {
-  const tab = wrapper.findAll('nav a').find((item) => item.text() === label);
+  const labels: Record<string, string> = { '号池占用': '预览资源', '用户管理': '成员与工位', 'LLM 管理': 'API 与模型', '代码托管': '仓库接入' };
+  const tab = wrapper.findAll('.admin-navigation a').find((item) => item.text() === (labels[label] ?? label));
   if (!tab) throw new Error(`管理台 tab「${label}」不存在`);
   await tab.trigger('click');
   await flushPromises();

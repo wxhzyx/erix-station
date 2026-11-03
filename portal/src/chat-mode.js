@@ -103,13 +103,13 @@ export async function sendChatMessage(pool, userId, id, body, { resolveProvider,
     const messages = [...previous, user].map(chatPromptMessage);
     if (Buffer.byteLength(JSON.stringify(messages)) > CHAT_LIMITS.contextBytes) fail('聊天上下文过大，请新建聊天');
     const provider = await resolveProvider(userId, db);
-    if (!provider?.api_key || !provider?.base_url || !provider?.model) throw new ChatModeError('llm_not_configured', '请先配置聊天模式 API', { httpStatus: 409 });
+    if (!provider?.api_key || !provider?.base_url || !provider?.model) throw new ChatModeError('llm_not_configured', '聊天模型尚未配置，请联系管理员', { httpStatus: 409 });
     if (provider.supportsImages === false && [...previous, user].some((m) => m.attachments?.some((f) => IMAGE_MIMES.has(f.mime_type)))) throw new ChatModeError('validation_failed', '当前聊天模型不支持图片，请选择支持图片的模型');
     let response;
     try {
       response = await complete({ provider, messages, maxTokens: 4096, timeoutMs: 60000, fetchImpl, log: null });
     } catch {
-      throw new ChatModeError('llm_upstream_failed', '聊天 API 调用失败，请检查配置或稍后重试', { httpStatus: 502 });
+      throw new ChatModeError('llm_upstream_failed', '聊天模型调用失败，请稍后重试或联系管理员', { httpStatus: 502 });
     }
     if (typeof response.text !== 'string' || !response.text.trim() || response.text.length > 1000000) throw new ChatModeError('llm_upstream_failed', '聊天 API 未返回有效文本', { httpStatus: 502 });
     // Never echo a credential even when an upstream unexpectedly includes it in output.

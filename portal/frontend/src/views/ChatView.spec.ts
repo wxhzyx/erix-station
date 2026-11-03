@@ -28,7 +28,8 @@ describe('Standalone chat', () => {
     expect(wrapper.find('aside').exists()).toBe(false);
     expect(wrapper.text()).toContain('开始一段新对话');
     expect(wrapper.get('input[type=file]').attributes('multiple')).toBeDefined();
-    expect(wrapper.get('a[href="/"]').text()).toBe('工作模式');
+    expect(wrapper.get('a[href="/"]').text()).toContain('工作模式');
+    expect(wrapper.find('a[href="/mode-settings"]').exists()).toBe(false);
     expect(mockApi.mock.calls.every(([url]) => !url.includes('/dirs') && !url.includes('/sessions'))).toBe(true);
   });
   it('creates once, prevents repeated submit and keeps canonical history', async () => {

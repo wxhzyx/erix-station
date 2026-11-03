@@ -3,62 +3,39 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
-
-const { t } = useI18n();
+import StationShell from '../components/StationShell.vue';
+const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
-
-const who = computed(() => {
-  const user = auth.user;
-  if (!user) return '';
-  return user.fde_name
-    ? t('workbench.who', { login: user.login, role: user.role, fde: user.fde_name })
-    : t('workbench.whoNoFde', { login: user.login, role: user.role });
-});
-
-const tabs = [
-  { name: 'admin-approvals', label: 'admin.tabs.approvals' },
-  { name: 'admin-delivery', label: 'admin.tabs.delivery' },
-  { name: 'admin-users', label: 'admin.tabs.users' },
-  { name: 'admin-llm', label: 'admin.tabs.llm' },
-  { name: 'admin-repos', label: 'admin.tabs.repos' },
-  // issue #350：号池占用总览（只读）。放在最后：先看用户/配置，选段时才来这里。
-  { name: 'admin-preview-pool', label: 'admin.tabs.previewPool' },
-] as const;
-
-async function onLogout() {
-  await auth.logout();
-  router.replace('/login');
-}
+const en = computed(() => locale.value === 'en');
+const groups = computed(() => [
+  { label: en.value ? 'DELIVERY' : '项目与交付', items: [
+    { path: '/admin/delivery', label: en.value ? 'Project delivery' : '项目交付', hint: en.value ? 'Packages and assignments' : '交付包与项目下发' },
+    { path: '/admin/approvals', label: en.value ? 'Project reviews' : '项目审批', hint: en.value ? 'Review and merge changes' : '审查与合并项目变更' },
+  ] },
+  { label: en.value ? 'ACCESS & USAGE' : '成员与资源', items: [
+    { path: '/admin/users', label: en.value ? 'Members & workstations' : '成员与工位', hint: en.value ? 'Accounts, access and lifecycle' : '账号权限与工位管理' },
+    { path: '/admin/quotas', label: en.value ? 'Token quotas' : '额度与申请', hint: en.value ? 'Daily limits and upgrade requests' : '每日额度与升级审批' },
+  ] },
+  { label: en.value ? 'PLATFORM' : '平台配置', items: [
+    { path: '/admin/llm', label: en.value ? 'API & models' : 'API 与模型', hint: en.value ? 'Providers, credentials and models' : '统一管理 API 接入与模型目录' },
+    { path: '/admin/model-access', label: en.value ? 'Model assignments' : '用户模型分配', hint: en.value ? 'Assign chat and work models' : '为成员配置聊天与开发模型' },
+    { path: '/admin/repos', label: en.value ? 'Repositories' : '仓库接入', hint: en.value ? 'Repository connections' : '代码仓库连接与配置' },
+    { path: '/admin/preview-pool', label: en.value ? 'Preview resources' : '预览资源', hint: en.value ? 'Preview port allocation' : '预览端口分配与占用' },
+  ] },
+]);
+const current = computed(() => groups.value.flatMap(g => g.items).find(i => i.path === route.path));
+async function onLogout() { await auth.logout(); await router.replace('/login'); }
 </script>
-
 <template>
-  <div class="station-admin min-h-screen flex flex-col">
-    <header class="station-header flex flex-wrap items-center gap-3">
-      <h1 class="text-xl font-medium mb-0">{{ t('admin.title') }}</h1>
-      <span class="flex-1 text-black/50 text-sm">{{ who }}</span>
-      <router-link to="/" class="text-sm underline">{{ t('admin.backToWorkbench') }}</router-link>
-      <button
-        class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5"
-        @click="onLogout"
-      >{{ t('common.logout') }}</button>
-    </header>
-
-    <nav class="flex gap-1 border-b border-black/10 px-3" :aria-label="t('admin.tabs.label')">
-      <router-link
-        v-for="tab in tabs"
-        :key="tab.name"
-        :to="{ name: tab.name }"
-        class="border-b-2 px-3 py-2 text-sm"
-        :class="route.name === tab.name
-          ? 'border-brand font-semibold text-brand'
-          : 'border-transparent text-black/60 hover:bg-black/5 hover:text-black'"
-      >{{ t(tab.label) }}</router-link>
-    </nav>
-
-    <main class="flex-1 p-3">
-      <router-view />
-    </main>
-  </div>
+  <StationShell area="admin">
+    <div class="station-admin console-page">
+      <header class="station-header"><div><span class="page-eyebrow">ORGANIZATION / ADMIN</span><h1>{{ t('admin.title') }}</h1></div><div class="header-actions"><span class="status-pill">{{ en ? 'Administrator' : '管理员' }}</span><button class="station-secondary" @click="onLogout">{{ t('common.logout') }}</button></div></header>
+      <div class="admin-layout">
+        <nav class="admin-navigation" :aria-label="t('admin.tabs.label')"><div v-for="group in groups" :key="group.label" class="admin-nav-group"><h2>{{ group.label }}</h2><router-link v-for="item in group.items" :key="item.path" :to="item.path" :class="{ active: route.path === item.path }" :aria-current="route.path === item.path ? 'page' : undefined">{{ item.label }}</router-link></div></nav>
+        <main class="console-content admin-content"><div v-if="current" class="page-intro"><h2>{{ current.label }}</h2><p>{{ current.hint }}</p></div><router-view :key="route.path" /></main>
+      </div>
+    </div>
+  </StationShell>
 </template>

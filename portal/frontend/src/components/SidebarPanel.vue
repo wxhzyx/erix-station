@@ -18,7 +18,6 @@
 import { computed, nextTick, onMounted, onScopeDispose, ref } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useAuthStore } from '../stores/auth';
 import { useWorkbenchStore } from '../stores/workbench';
 import type { Session } from '../stores/workbench';
 import { SESSION_TITLE_MAX_LEN } from '../lib/constants';
@@ -34,7 +33,6 @@ import { usePreviewPorts } from '../composables/usePreviewPorts';
 // issue #101 P2：用户可见文案走 i18n（sidebar.* / common.*；代码注释保持中文原文）。
 const { t } = useI18n();
 const store = useWorkbenchStore();
-const auth = useAuthStore();
 const emit = defineEmits<{
   (e: 'select-session', id: string): void;
   (e: 'new-session'): void;
@@ -192,11 +190,7 @@ function messageCountSuffix(s: Session): string {
     <div class="shrink-0">
       <!-- 常驻「管理台」入口（旧 index.html header adminLink 的 SPA 等价；admin 角色才显示） -->
       <!-- issue #112：侧栏头控件统一 32px 高 / 7px 圆角 / 12px 字号（对齐 pi-web 控件规格） -->
-      <router-link
-        v-if="auth.user?.role === 'admin'"
-        to="/admin"
-        class="mb-2 block h-8 rounded-[7px] border border-black/20 bg-black/[.03] px-2.5 text-center text-[12px] leading-8 hover:bg-black/10"
-      >{{ t('common.adminConsole') }}</router-link>
+      <p class="sidebar-caption">{{ t('sidebar.workspaceLabel') }}</p>
 
       <!-- 目录下拉 + ↻ 双刷（issue #84 P5：替换原项目 select + 新项目表单） -->
       <DirSelect @refresh="onRefresh" @new-dir="newDirOpen = true" />

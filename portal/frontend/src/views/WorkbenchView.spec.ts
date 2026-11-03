@@ -1,15 +1,9 @@
-// WorkbenchView 顶栏 i18n 单测（issue #101 P2）：
-//   ① zh-CN 基线：顶栏文案（☰ 导航 / cwd 徽标 title / who 拼接 / 管理台 / 登出 / ↓ 最新）与
-//      aria-label（打开导航 / 调整侧栏宽度）走 i18n 后取值逐字不变；
-//   ② 顶栏语言切换菜单（LocaleSwitch）挂载在管理台/登出旁；切 English 后顶栏（含嵌套的侧栏
-//      子组件）文案即时变英文，who 拼接改半角括号。
-// 约定（照 LoginView.spec 先例）：装配真实 i18n 单例，不 mock t()；每例 localStorage.clear() + setLocale('zh-CN')。
+// Console navigation regression: user identity lives in the rail; language is a personal preference.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory } from 'vue-router';
 import WorkbenchView from './WorkbenchView.vue';
-import LocaleSwitch from '../components/LocaleSwitch.vue';
 import { createAppRouter } from '../router';
 import { setUserScopeResetListener } from '../lib/userScope';
 import { useAuthStore, type AuthUser } from '../stores/auth';
@@ -89,11 +83,9 @@ async function triggerScrollAway(wrapper: Awaited<ReturnType<typeof mountWorkben
   await wrapper.find('section > div').trigger('scroll');
 }
 
-/** 切语言：点顶栏 LocaleSwitch 的 English 菜单项。 */
-async function switchToEnglish(wrapper: Awaited<ReturnType<typeof mountWorkbench>>) {
-  const sw = wrapper.findComponent(LocaleSwitch);
-  await sw.find('button').trigger('click');
-  await sw.findAll('[role="menuitem"]')[1].trigger('click');
+/** 切语言：点个人偏好 store 的语言。 */
+async function switchToEnglish(_wrapper: Awaited<ReturnType<typeof mountWorkbench>>) {
+  setLocale('en');
   await flushPromises();
 }
 
@@ -107,27 +99,28 @@ describe('WorkbenchView 顶栏 · i18n（issue #101 P2）', () => {
     const badge = wrapper.find('header button[title]');
     expect(badge.attributes('title')).toBe('~/projects/demo（点击复制）');
     expect(badge.text()).toContain('📁 demo');
-    // who 拼接：login（role / fde_name）
-    expect(wrapper.find('header span.flex-1').text()).toBe('alice（fde / alice）');
+    // 账号标识：login（role / fde_name）
+    expect(wrapper.find('.rail-profile strong').text()).toBe('Alice');
     // 普通 FDE 无「管理台」入口；登出按钮 + 语言切换菜单在位
-    expect(wrapper.find('header a[href="/admin"]').exists()).toBe(false);
+    expect(wrapper.find('.station-rail a[href="/admin"]').exists()).toBe(false);
     // header 直系 button：☰ 导航 / cwd 徽标 / 登出（LocaleSwitch 自身按钮在子 div 内，不计入）
     expect(wrapper.findAll('header > button').at(-1)!.text()).toBe('登出');
-    expect(wrapper.findComponent(LocaleSwitch).exists()).toBe(true);
+    expect(wrapper.find('header [aria-label="语言"]').exists()).toBe(false);
+    expect(wrapper.find('.station-rail a[href="/settings"]').exists()).toBe(true);
     // 侧栏拖拽把手无障碍标签
     expect(wrapper.find('[role="separator"]').attributes('aria-label')).toBe('调整侧栏宽度');
   });
 
-  it('平台管理员（第 ② 类人：admin 且有工位）：顶栏「管理台」入口；who 带 fde_name（全角括号）', async () => {
+  it('平台管理员（第 ② 类人：admin 且有工位）：顶栏「管理台」入口；账号位于主导航', async () => {
     const wrapper = await mountWorkbench(ADMIN_WITH_SEAT);
-    expect(wrapper.find('header span.flex-1').text()).toBe('root（admin / root）');
-    expect(wrapper.find('header a[href="/admin"]').text()).toBe('管理台');
+    expect(wrapper.find('.rail-profile strong').text()).toBe('Root');
+    expect(wrapper.find('.station-rail a[href="/admin"]').text()).toContain('管理台');
   });
 
-  it('who 的无 fde_name 分支（fde 账号缺 fde_name）：只显示 role（全角括号）', async () => {
+  it('没有工位的成员仍显示账号', async () => {
     const wrapper = await mountWorkbench(FDE_NO_SEAT);
-    expect(wrapper.find('header span.flex-1').text()).toBe('bob（fde）');
-    expect(wrapper.find('header a[href="/admin"]').exists()).toBe(false);
+    expect(wrapper.find('.rail-profile strong').text()).toBe('Bob');
+    expect(wrapper.find('.station-rail a[href="/admin"]').exists()).toBe(false);
   });
 
   it('「↓ 最新」悬浮按钮文案走 i18n（离开底部时出现）', async () => {
@@ -137,17 +130,17 @@ describe('WorkbenchView 顶栏 · i18n（issue #101 P2）', () => {
     expect(wrapper.find('section > button').text()).toBe('↓ 最新');
   });
 
-  it('切 English：顶栏 + 嵌套侧栏文案即时变英文（who 改半角括号），并持久化', async () => {
+  it('切 English：顶栏 + 嵌套侧栏文案即时变英文，并持久化', async () => {
     const wrapper = await mountWorkbench(ADMIN_WITH_SEAT);
-    expect(wrapper.find('header span.flex-1').text()).toBe('root（admin / root）');
+    expect(wrapper.find('.rail-profile strong').text()).toBe('Root');
 
     await switchToEnglish(wrapper);
 
     expect(wrapper.find('header button').text()).toBe('☰ Navigation');
     expect(wrapper.find('header button').attributes('aria-label')).toBe('Open navigation');
     expect(wrapper.find('header button[title]').attributes('title')).toBe('~/projects/demo (click to copy)');
-    expect(wrapper.find('header span.flex-1').text()).toBe('root (admin / root)');
-    expect(wrapper.find('header a[href="/admin"]').text()).toBe('Admin console');
+    expect(wrapper.find('.rail-profile small').text()).toBe('Administrator');
+    expect(wrapper.find('.station-rail a[href="/admin"]').text()).toContain('Admin console');
     expect(wrapper.findAll('header > button').at(-1)!.text()).toBe('Sign out');
     expect(wrapper.find('[role="separator"]').attributes('aria-label')).toBe('Resize sidebar');
     // 嵌套子组件（SidebarPanel/DirSelect）同样响应（全局 locale 向子树传播）

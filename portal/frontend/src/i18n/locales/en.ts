@@ -130,6 +130,7 @@ export const en = {
     notifyDone: 'Run finished',
   },
   sidebar: {
+    workspaceLabel: 'PROJECT SPACE',
     dirLabel: 'Directory',
     newDirOption: '＋ New directory',
     refreshTitle: 'Refresh directory list and tree',
@@ -154,6 +155,7 @@ export const en = {
     selectDirFirst: 'Select a directory first',
   },
   stream: {
+    workspaceReady: 'Bring your ideas into the project',
     chooseOrNewSession: 'Select or create a session',
     argsPending: '(generating arguments…)',
     argsStreaming: '(arguments streaming…)',

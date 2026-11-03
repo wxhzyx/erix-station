@@ -5,9 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { api } from '../api';
 import { bytesBase64, extractDocument, isDocument, readBase64, rejectLegacyDocument } from '../lib/documentAttachments';
 import { useAuthStore } from '../stores/auth';
-import StationModeSwitch from '../components/StationModeSwitch.vue';
-import LocaleSwitch from '../components/LocaleSwitch.vue';
-import TokenQuotaPanel from '../components/TokenQuotaPanel.vue';
+import StationShell from '../components/StationShell.vue';
 interface Conversation { id: string; title: string }
 interface Attachment { name: string; mime_type: string; data_base64: string; warnings?: string[] }
 interface Message { id: string; role: string; content: string; attachments?: { name: string; size: number }[] }
@@ -97,12 +95,12 @@ async function logout() { reset(); conversations.value = []; await auth.logout()
 onUnmounted(reset);
 </script>
 <template>
+  <StationShell area="chat">
   <div class="station-chat flex h-screen flex-col">
     <header class="station-header flex flex-wrap items-center gap-3">
-      <StationModeSwitch mode="chat" /><h1 class="station-wordmark">FDE Station</h1><span class="flex-1"></span>
-      <router-link to="/mode-settings" class="text-sm underline">{{ en ? 'API settings' : 'API 设置' }}</router-link>
-      <router-link v-if="auth.user?.role === 'admin'" to="/admin" class="text-sm underline">{{ t('common.adminConsole') }}</router-link>
-      <TokenQuotaPanel /><LocaleSwitch /><button class="text-sm underline" @click="logout">{{ t('common.logout') }}</button>
+      <div><span class="page-eyebrow">WORKSPACE / CHAT</span><h1>{{ en ? 'AI conversation' : 'AI 对话' }}</h1></div><span class="flex-1"></span>
+      <router-link to="/settings?tab=usage" class="header-usage">{{ en ? 'Usage & quota' : '用量与额度' }}</router-link>
+      <button class="station-secondary" @click="logout">{{ t('common.logout') }}</button>
     </header>
     <main class="chat-main mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 overflow-hidden px-4 py-5">
       <div class="flex gap-3">
@@ -110,7 +108,7 @@ onUnmounted(reset);
         <select :value="selected" :disabled="busy" :aria-label="en ? 'Conversation history' : '历史对话'" class="chat-history min-w-0 flex-1 rounded-xl px-3" @change="choose"><option value="">{{ en ? 'New conversation' : '新的对话' }}</option><option v-for="c in conversations" :key="c.id" :value="c.id">{{ c.title || (en ? 'Untitled conversation' : '未命名对话') }}</option></select>
       </div>
       <section class="chat-stream min-h-0 flex-1 space-y-4 overflow-auto" aria-live="polite" :aria-busy="busy">
-        <div v-if="!messages.length" class="chat-empty"><div class="station-emblem" aria-hidden="true">✳</div><h2>{{ en ? 'Let’s talk.' : '开始一段新对话' }}</h2></div>
+        <div v-if="!messages.length" class="chat-empty"><div class="station-emblem" aria-hidden="true">F<span>_</span></div><div><p class="page-eyebrow">THINK. EXPLORE. CREATE.</p><h2>{{ en ? 'Let’s talk.' : '开始一段新对话' }}</h2><p class="empty-description">{{ en ? 'Explore ideas, understand documents, and turn questions into next steps.' : '梳理想法、理解文档，让每一个问题都有下一步。' }}</p></div><div class="chat-suggestions"><button type="button" @click="draft = en ? 'Help me structure this idea: ' : '帮我梳理这个想法：'">{{ en ? 'Explore an idea' : '梳理一个想法' }} <span aria-hidden="true">↗</span></button><button type="button" @click="draft = en ? 'Help me analyze this document: ' : '帮我分析这份文档：'">{{ en ? 'Analyze a document' : '分析一份文档' }} <span aria-hidden="true">↗</span></button></div></div>
         <article v-for="message in messages" :key="message.id" class="chat-message rounded-2xl p-5" :class="message.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'">
           <h3 class="mb-2 text-sm font-semibold">{{ message.role === 'user' ? (en ? 'You' : '你') : 'FDE Station' }}</h3>
           <p class="whitespace-pre-wrap break-words">{{ message.content }}</p>
@@ -131,4 +129,5 @@ onUnmounted(reset);
       </form>
     </main>
   </div>
+  </StationShell>
 </template>

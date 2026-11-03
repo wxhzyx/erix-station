@@ -144,6 +144,7 @@ export const zhCN = {
   },
   // 侧栏（components/SidebarPanel.vue / DirSelect.vue）
   sidebar: {
+    workspaceLabel: '项目空间',
     dirLabel: '目录',
     newDirOption: '＋ 新建目录',
     refreshTitle: '刷新目录列表与目录树',
@@ -170,6 +171,7 @@ export const zhCN = {
   },
   // 消息流（components/StreamPanel.vue）+ SSE 事件状态行（composables/useEventStream.ts）
   stream: {
+    workspaceReady: '把想法带进项目',
     chooseOrNewSession: '选择或新建会话',
     // 工具卡片单行摘要兜底（参数 JSON 尚未成形）
     argsPending: '（参数生成中…）',

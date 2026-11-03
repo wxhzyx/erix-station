@@ -287,7 +287,7 @@ describe('SidebarPanel · 左栏视觉收敛（issue #112）', () => {
     expect(ctrl('select').classList).toContain('h-8');
     expect(ctrl('select').classList).toContain('text-[12px]');
     expect(ctrl('button[title="刷新目录列表与目录树"]').classList).toContain('h-8');
-    expect(ctrl('a[href="/admin"]').classList).toContain('h-8');
+    expect(ctrl('a[href="/admin"]')).toBeNull(); // Admin navigation now lives in StationShell.
     expect(ctrl('label[for="dirSel"]').classList).toContain('text-[11px]');
   });
 });
@@ -355,7 +355,8 @@ describe('SidebarPanel · i18n（issue #101 P2）', () => {
     const wrapper = await mountPanel({ noDir: true, adminUser: true });
     const { list } = paneEls(wrapper);
     expect(list.textContent).not.toContain('请到管理台');
-    expect(wrapper.get('a[href="/admin"]').text()).toBe('管理台');
+    expect(wrapper.find('a[href="/admin"]').exists()).toBe(false);
+    expect(wrapper.get('.sidebar-caption').text()).toBe('项目空间');
   });
 
   it('切 English：侧栏（含 DirSelect 子组件）文案即时变英文', async () => {
@@ -387,7 +388,8 @@ describe('SidebarPanel · i18n（issue #101 P2）', () => {
     expect(wrapper.text()).toContain('Create a directory first');
     expect(wrapper.text()).not.toContain('Platform admin');
     expect(wrapper.text()).not.toContain('Go to admin console');
-    expect(wrapper.get('a[href="/admin"]').text()).toBe('Admin console');
+    expect(wrapper.find('a[href="/admin"]').exists()).toBe(false);
+    expect(wrapper.get('.sidebar-caption').text()).toBe('PROJECT SPACE');
   });
 });
 
