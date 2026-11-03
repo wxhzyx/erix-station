@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { branchFor, protectionRules, gitea, applyProtections } from '../src/collaboration-gitea.js';
+import { branchFor, protectionRules, gitea, applyProtections, withStationAuthors } from '../src/collaboration-gitea.js';
 import { collaborationApi, collaborationHeartbeat } from '../src/collaboration.js';
 
 test('personal branches preserve domain login and deterministically encode unsafe names',()=>{
@@ -43,4 +43,13 @@ test('cleanup ACKs are bound to authenticated user and current pending membershi
   assert.deepEqual(writes,[]);
   assert.deepEqual(await collaborationHeartbeat(db,{id:'A'},{collaboration_cleanup_acks:['own','B']}),{cleanup_projects:[]});
   assert.deepEqual(writes,[['own','A']]);
+});
+
+test('historical Git authors display their retained SSO identity without changing the original author',async()=>{
+  const original=[{number:1,user:{login:'sso-legacy-user',id:42}},{number:2,user:{login:'external'}}];
+  const db={query:async(_sql,args)=>{assert.deepEqual(args,['http://git.internal',['sso-legacy-user','external']]);return {rows:[{remote_login:'sso-legacy-user',login:'JXu14',display_name:'Xu, Jim(IT)'}]};}};
+  const result=await withStationAuthors(db,{baseUrl:'http://git.internal'},original);
+  assert.deepEqual(result[0].user,{id:42,login:'sso-legacy-user',station_login:'JXu14',station_display_name:'Xu, Jim(IT)'});
+  assert.deepEqual(original[0].user,{login:'sso-legacy-user',id:42});
+  assert.deepEqual(result[1],original[1]);
 });

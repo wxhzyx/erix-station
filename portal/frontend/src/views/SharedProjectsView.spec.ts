@@ -6,13 +6,13 @@ import SharedProjectsView from './SharedProjectsView.vue';
 import {useAuthStore} from '../stores/auth';
 const mounted:ReturnType<typeof mount>[]=[];
 afterEach(()=>{for(const w of mounted.splice(0))w.unmount();vi.unstubAllGlobals();});
-async function setup(state='invited'){
+async function setup(state='invited',showLegacyAuthor=false){
   const calls:{url:string;body?:string}[]=[];
   vi.stubGlobal('fetch',vi.fn(async(url:string,options?:RequestInit)=>{
     calls.push({url,body:options?.body as string});
     const data=url==='/api/collaboration'?{enabled:true,projects:[{id:'p',name:'alpha',state:'active',membership_state:state}]}:
-      url.endsWith('/p')?{project:{id:'p',name:'alpha',state:'active',owner_user_id:'a',owner_login:'Owner',owner_name:'负责人'},mine:{id:'m',user_id:'b',login:'DomainB',branch:'dev/DomainB',state},members:[{id:'m',user_id:'b',login:'DomainB',display_name:'员工 B',branch:'dev/DomainB',state}],can_manage:false,candidates:[]}:
-      url.endsWith('/pulls')?{pulls:[]}:{ok:true};
+      url.endsWith('/p')?{project:{id:'p',name:'alpha',state:'active',owner_user_id:'a',owner_login:'Owner',owner_name:'负责人',repo_url:'http://git.example/test.git'},mine:{id:'m',user_id:'b',login:'DomainB',branch:'dev/DomainB',state},members:[{id:'m',user_id:'b',login:'DomainB',display_name:'员工 B',branch:'dev/DomainB',state}],can_manage:false,candidates:[]}:
+      url.endsWith('/pulls')?{pulls:showLegacyAuthor?[{number:1,title:'交付',user:{login:'sso-old-prefix',station_login:'DomainB',station_display_name:'员工 B'},head:{ref:'dev/DomainB'},merged:true}]:[]}:{ok:true};
     return new Response(JSON.stringify(data),{status:200});
   }));
   const pinia=createPinia(),auth=useAuthStore(pinia);auth.user={id:'b',login:'DomainB',display_name:'员工 B',role:'fde',fde_name:'seat',auth_source:'oidc'};
@@ -30,4 +30,11 @@ it('an invited member cannot enter the workbench or submit a PR',async()=>{
 });
 it('an active member gets development and explicit synchronization actions',async()=>{
   const {w}=await setup('active');expect(w.text()).toContain('进入项目');expect(w.text()).toContain('同步主分支');expect(w.text()).not.toContain('邀请成员');
+});
+it('PR authors use SSO names instead of historical Gitea account prefixes',async()=>{
+  const {w}=await setup('active',true);
+  await w.findAll('[role=tab]').find(tab=>tab.text()==='合并请求')!.trigger('click');
+  await flushPromises();
+  await vi.waitFor(()=>expect(w.text()).toContain('员工 B · dev/DomainB'));
+  expect(w.text()).not.toContain('sso-old-prefix');
 });
