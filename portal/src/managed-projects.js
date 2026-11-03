@@ -84,7 +84,9 @@ export async function deleteAssignment(pool, { id, actorId, confirmation, config
     }
     const root = path.resolve(config.userSpaceRoot);
     const target = path.join(root, a.fde_name, 'projects', a.name);
-    const trashRoot = path.join(root, '.deleted-projects');
+    // Stay in the member's inherited XFS project quota while quarantining
+    // outside the home/projects mounts exposed to the container.
+    const trashRoot = path.join(root, a.fde_name, '.deleted-projects');
     const trash = path.join(trashRoot, id);
     assertSafePath(root, target); assertSafePath(root, trash);
     await fs.mkdir(trashRoot, { recursive: true, mode: 0o700 });
@@ -190,7 +192,7 @@ export async function provisionAssignment(pool, { id, config, fetchImpl = fetch,
     }
     const repoUrl = `${a.base_url.replace(/\/$/,'')}/${encodeURIComponent(a.remote_login)}/${a.name}.git`;
     await client.query(`UPDATE project_assignments SET repo_url=$2,status='pending',last_error=NULL,updated_at=now() WHERE id=$1`, [id,repoUrl]);
-    const stagingRoot = path.join(root, '.delivery-staging');
+    const stagingRoot = path.join(root, a.fde_name, '.delivery-staging');
     assertSafePath(root, stagingRoot); await fs.mkdir(stagingRoot,{recursive:true,mode:0o700});
     const staging = await fs.mkdtemp(path.join(stagingRoot, `${id}-`));
     const env = { ...process.env, GIT_CONFIG_NOSYSTEM:'1', GIT_CONFIG_GLOBAL:'/dev/null', GIT_TERMINAL_PROMPT:'0',

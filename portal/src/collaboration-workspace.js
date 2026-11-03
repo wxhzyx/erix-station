@@ -9,9 +9,12 @@ const exec = promisify(execFile);
 
 /** Only run privileged git inside a new, portal-owned staging directory.
  * Never run git with service credentials in an existing user-controlled checkout. */
-export async function stageWorkspace(config, identity, url, operation) {
+export async function stageWorkspace(config, identity, url, operation, { fdeName } = {}) {
   const root = path.resolve(config.userSpaceRoot);
-  const stagingRoot = path.join(root,'.collaboration-staging');
+  // Member roots inherit distinct XFS project quotas. Staging for a final
+  // rename must inherit that member's project ID (same st_dev is insufficient).
+  // This sibling of home/projects is never mounted in the member container.
+  const stagingRoot = path.join(root, fdeName ?? '', '.collaboration-staging');
   assertSafePath(root,stagingRoot); await fs.mkdir(stagingRoot,{recursive:true,mode:0o700});
   const staging = await fs.mkdtemp(path.join(stagingRoot,'workspace-'));
   const env = { ...process.env,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_TERMINAL_PROMPT:'0',
@@ -62,5 +65,5 @@ export async function prepareWorkspace(config, c, project, member) {
     }};
     await own(staging);await fs.chown(staging,config.workerUid??1002,config.fdeGid??1000);await fs.chmod(staging,0o770);
     assertSafePath(root,target);await fs.rename(staging,target);
-  });
+  }, { fdeName: member.fde_name });
 }
