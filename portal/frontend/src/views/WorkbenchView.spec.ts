@@ -102,11 +102,11 @@ describe('WorkbenchView 顶栏 · i18n（issue #101 P2）', () => {
     // 账号标识：login（role / fde_name）
     expect(wrapper.find('.rail-profile strong').text()).toBe('Alice');
     // 普通 FDE 无「管理台」入口；登出按钮 + 语言切换菜单在位
-    expect(wrapper.find('.station-rail a[href="/admin"]').exists()).toBe(false);
+    expect(wrapper.find('.station-topbar a[href="/admin"]').exists()).toBe(false);
     // header 直系 button：☰ 导航 / cwd 徽标 / 登出（LocaleSwitch 自身按钮在子 div 内，不计入）
     expect(wrapper.findAll('header > button').at(-1)!.text()).toBe('登出');
     expect(wrapper.find('header [aria-label="语言"]').exists()).toBe(false);
-    expect(wrapper.find('.station-rail a[href="/settings"]').exists()).toBe(true);
+    expect(wrapper.find('.station-topbar a[href="/settings"]').exists()).toBe(true);
     // 侧栏拖拽把手无障碍标签
     expect(wrapper.find('[role="separator"]').attributes('aria-label')).toBe('调整侧栏宽度');
   });
@@ -114,13 +114,13 @@ describe('WorkbenchView 顶栏 · i18n（issue #101 P2）', () => {
   it('平台管理员（第 ② 类人：admin 且有工位）：顶栏「管理台」入口；账号位于主导航', async () => {
     const wrapper = await mountWorkbench(ADMIN_WITH_SEAT);
     expect(wrapper.find('.rail-profile strong').text()).toBe('Root');
-    expect(wrapper.find('.station-rail a[href="/admin"]').text()).toContain('管理台');
+    expect(wrapper.find('.station-topbar a[href="/admin"]').text()).toContain('管理台');
   });
 
   it('没有工位的成员仍显示账号', async () => {
     const wrapper = await mountWorkbench(FDE_NO_SEAT);
     expect(wrapper.find('.rail-profile strong').text()).toBe('Bob');
-    expect(wrapper.find('.station-rail a[href="/admin"]').exists()).toBe(false);
+    expect(wrapper.find('.station-topbar a[href="/admin"]').exists()).toBe(false);
   });
 
   it('「↓ 最新」悬浮按钮文案走 i18n（离开底部时出现）', async () => {
@@ -140,7 +140,7 @@ describe('WorkbenchView 顶栏 · i18n（issue #101 P2）', () => {
     expect(wrapper.find('header button').attributes('aria-label')).toBe('Open navigation');
     expect(wrapper.find('header button[title]').attributes('title')).toBe('~/projects/demo (click to copy)');
     expect(wrapper.find('.rail-profile small').text()).toBe('Administrator');
-    expect(wrapper.find('.station-rail a[href="/admin"]').text()).toContain('Admin console');
+    expect(wrapper.find('.station-topbar a[href="/admin"]').text()).toContain('Admin console');
     expect(wrapper.findAll('header > button').at(-1)!.text()).toBe('Sign out');
     expect(wrapper.find('[role="separator"]').attributes('aria-label')).toBe('Resize sidebar');
     // 嵌套子组件（SidebarPanel/DirSelect）同样响应（全局 locale 向子树传播）
@@ -532,3 +532,4 @@ describe('#428 换账号时的视图接线', () => {
     expect(first.store.sessionId).toBeNull();
   });
 });
+
