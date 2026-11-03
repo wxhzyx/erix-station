@@ -111,10 +111,12 @@ describe('Admin console routing and layout', () => {
   it('/admin redirects to /admin/users; shared header and current tab are rendered', async () => {
     const { wrapper, router } = await mountAdmin('/admin');
     expect(router.currentRoute.value.path).toBe('/admin/users');
-    expect(wrapper.get('h1').text()).toBe('FDE Station 管理台');
+    expect(wrapper.get('h1').text()).toBe('成员与工位');
+    expect(wrapper.findAll('.station-topbar')).toHaveLength(1);
     expect(wrapper.get('.rail-profile').text()).toContain('Root');
     expect(wrapper.get('.station-mode-switch').text()).toContain('工作模式');
-    expect(wrapper.get('header').text()).toContain('登出');
+    expect(wrapper.find('.station-admin > .station-header').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="账号菜单"]').exists()).toBe(true);
     expect(wrapper.find('.admin-navigation a[aria-current="page"]').text()).toBe('成员与工位');
     wrapper.unmount();
   });
@@ -1634,9 +1636,9 @@ describe('AdminView · FDE 用户', () => {
     const auth = useAuthStore();
     auth.user = { ...ADMIN_USER, fde_name: 'alice' };
     await flushPromises();
-    expect(wrapper.get('h1').text()).toBe('FDE Station Admin Console');
+    expect(wrapper.get('h1').text()).toBe('Members & workstations');
     expect(wrapper.get('.rail-profile strong').text()).toBe('Root');
-    expect(wrapper.get('.rail-profile small').text()).toBe('Administrator');
+    expect(wrapper.find('[aria-label="Account menu"]').exists()).toBe(true);
     expect(wrapper.get('.station-mode-switch').text()).toContain('Work');
     expect(wrapper.find('.admin-navigation a[aria-current="page"]').text()).toBe('Members & workstations');
     wrapper.unmount();

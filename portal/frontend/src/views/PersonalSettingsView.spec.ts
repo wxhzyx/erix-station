@@ -19,7 +19,7 @@ async function setup(path='/settings'){
 }
 it('keeps personal preferences separate from admin APIs and persists language',async()=>{
  await setup();expect(wrapper.text()).toContain('INTEVA SSO');expect(mockApi).not.toHaveBeenCalled();expect(wrapper.find('a[href="/admin"]').exists()).toBe(false);
- expect(wrapper.find('select').exists()).toBe(false);await wrapper.get('button[aria-haspopup="menu"]').trigger('click');await wrapper.findAll('[role=menuitem]')[1]!.trigger('click');
+ expect(wrapper.find('select').exists()).toBe(false);await wrapper.get('button[aria-label="语言"]').trigger('click');await wrapper.findAll('[role=menuitem]')[1]!.trigger('click');
  expect(wrapper.text()).toContain('Personal settings');expect(localStorage.getItem('locale')).toBe('en');
 });
 it('shows authoritative shared quota and submits an upgrade request, then locks duplicate requests',async()=>{

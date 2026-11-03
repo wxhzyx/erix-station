@@ -1,10 +1,4 @@
-// 管理台外壳（顶栏 + tab 导航）的单测——**只钉一件事**：那颗登出按钮确实汇到 `auth.logout()`。
-//
-// 为什么值得单独一个文件（issue #431）：登出的收口判据是「**全站有几颗登出按钮**」，不是「哪个视图
-// 想到了要收摊」。全站三颗——`WorkbenchView` / 本文件 / `ForcePasswordChangeView`，而 `stores/auth.spec.ts`
-// 钉的是 `logout()` ⇒ `notifyUserScopeReset()`、`WorkbenchView.spec.ts` 钉的是 `notify` ⇒ 断流清空，
-// 中间一直缺「AdminLayout 这颗按钮 = `auth.logout()`」这段胶水（本组件此前**没有任何 spec**）。
-// 现在 #429 又把预览凭证的回收也挂在同一条 logout 上 ⇒ 这颗按钮漏接就是「换个平面继续穿越」。
+// 管理台通过统一头像菜单退出，仍须调用 auth.logout 清理用户会话和预览凭证。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
@@ -25,8 +19,7 @@ function makeRouter() {
     routes: [
       { path: '/', component: AdminLayout },
       { path: '/login', component: { template: '<div>login</div>' } },
-      // 顶栏四个 tab 用的是 `{ name: ... }` 形式的 :to ⇒ 路由表里没有这些名字，挂载当场就
-      // "No match for {name:'admin-users'}" 抛错（不是断言失败）。给桩即可，本单不测 tab。
+      // 提供管理页面路由桩；菜单点击由浏览器回归验证。
       ...['admin-delivery', 'admin-approvals', 'admin-users', 'admin-llm', 'admin-repos', 'admin-preview-pool']
         .map((name) => ({ path: `/${name}`, name, component: { template: '<div />' } })),
     ],
@@ -44,7 +37,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('AdminLayout 顶栏登出（#431 收口链路的那颗按钮）', () => {
+describe('AdminLayout 头像菜单退出', () => {
   it('点「登出」：打 /api/auth/logout、跳 /login，并触发用户 scope 复位', async () => {
     const calls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -63,13 +56,14 @@ describe('AdminLayout 顶栏登出（#431 收口链路的那颗按钮）', () =>
     await router.isReady();
     const wrapper = mount(AdminLayout, { global: { plugins: [router, i18n] } });
 
-    const logout = wrapper.findAll('header button').at(-1)!;
-    expect(logout.text()).toBe('登出');
-    await logout.trigger('click');
+    expect(wrapper.find('header button').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="账号菜单"]').exists()).toBe(true);
+    wrapper.findComponent({name:'ElDropdown'}).vm.$emit('command','logout');
     await flushPromises();
 
     expect(calls.filter((u) => u.startsWith('/api/auth/logout'))).toHaveLength(1);
     expect(router.currentRoute.value.path).toBe('/login');
+    wrapper.unmount();
     expect(notified, '这颗按钮必须汇到 auth.logout()——否则从管理台登出时上一账号的 SSE 没人关').toBe(1);
   });
 });

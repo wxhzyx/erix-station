@@ -43,6 +43,7 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('./views/AdminLayout.vue'),
     meta: { requiresRole: 'admin' },
     children: [
+      { path: 'projects', name: 'admin-projects', component: () => import('./views/SharedProjectsView.vue'), props: { embedded: true }, meta: { requiresRole: 'admin' } },
       { path: 'approvals', name: 'admin-approvals', component: () => import('./views/AdminApprovalsView.vue'), meta: { requiresRole: 'admin' } },
       { path: 'delivery', name: 'admin-delivery', component: () => import('./views/AdminDeliveryView.vue'), meta: { requiresRole: 'admin' } },
       { path: 'quotas', name: 'admin-quotas', component: () => import('./views/AdminQuotaView.vue'), meta: { requiresRole: 'admin' } },

@@ -75,14 +75,6 @@ async function onNewSession() {
   if (s) await router.push(`/session/${encodeURIComponent(String(s.id))}`);
 }
 
-async function onLogout() {
-  // issue #428/#431：本地收摊（关 SSE + 清上一个账号的可见面）由 `auth.logout()` 开头的
-  // `notifyUserScopeReset()` 统一触发（三颗登出按钮共用那一个汇合点），本视图只需注册
-  // `setUserScopeResetListener`（见上方），不在这里再抄一份。
-  await auth.logout();
-  router.replace('/login');
-}
-
 // ---- issue #94：Ctrl/⌘+K 全局快捷键打开会话浏览（scope='all' 跨目录找回）----
 const pickerOpen = ref(false);
 function onGlobalKeydown(e: KeyboardEvent) {
@@ -230,12 +222,12 @@ function jumpToLatest() {
   <!-- 拖拽期间 select-none 防选中文本 -->
   <div class="station-work h-screen flex flex-col" :class="sidebar.dragging.value && 'select-none'">
     <header class="station-header flex flex-wrap items-center gap-3">
-      <ElButton native-type="submit"
-        class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5 md:hidden"
-        :aria-label="t('workbench.openNavigation')"
+      <ElButton native-type="button"
+        class="workspace-drawer-toggle"
+        :aria-label="locale === 'en' ? 'Projects and sessions' : '项目与会话'"
         @click="drawerOpen = !drawerOpen"
-      >{{ t('workbench.nav') }}</ElButton>
-      <div class="work-heading"><span class="page-eyebrow">WORKSPACE / DEVELOP</span><h1>{{ locale === 'en' ? 'Development workspace' : '开发工作台' }}</h1></div>
+      >{{ locale === 'en' ? 'Projects & sessions' : '项目与会话' }}</ElButton>
+      <div class="work-heading"><h1>{{ locale === 'en' ? 'Development workspace' : '开发工作台' }}</h1></div>
       <!-- issue #84 P5.4：cwd 徽标（📁 短名；hover 显示全路径；点击复制） -->
       <ElButton
         v-if="store.dirCwd"
@@ -255,11 +247,6 @@ function jumpToLatest() {
         @prefill="onGitLightPrefill"
       />
       <span class="flex-1"></span>
-      <router-link to="/settings?tab=usage" class="header-usage">{{ locale === 'en' ? 'Usage & quota' : '用量与额度' }}</router-link>
-      <ElButton native-type="submit"
-        class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5"
-        @click="onLogout"
-      >{{ t('common.logout') }}</ElButton>
     </header>
 
     <main class="flex flex-1 min-h-0">

@@ -90,23 +90,24 @@ async function switchToEnglish(_wrapper: Awaited<ReturnType<typeof mountWorkbenc
 }
 
 describe('WorkbenchView 顶栏 · i18n（issue #101 P2）', () => {
-  it('zh-CN 基线：导航/徽标 title/who/登出/aria-label 文案与 P1 前逐字一致', async () => {
+  it('中文顶栏保留目录与身份，个人操作集中到头像菜单', async () => {
     const wrapper = await mountWorkbench();
     const nav = wrapper.find('header button');
-    expect(nav.text()).toBe('☰ 导航');
-    expect(nav.attributes('aria-label')).toBe('打开导航');
+    expect(nav.text()).toBe('项目与会话');
+    expect(nav.attributes('aria-label')).toBe('项目与会话');
     // cwd 徽标：hover 全路径 + 点击复制提示
     const badge = wrapper.find('header button[title]');
     expect(badge.attributes('title')).toBe('~/projects/demo（点击复制）');
     expect(badge.text()).toContain('📁 demo');
     // 账号标识：login（role / fde_name）
     expect(wrapper.find('.rail-profile strong').text()).toBe('Alice');
-    // 普通 FDE 无「管理台」入口；登出按钮 + 语言切换菜单在位
+    // 普通 FDE 无「管理台」入口；账号菜单提供个人操作
     expect(wrapper.find('.station-topbar a[href="/admin"]').exists()).toBe(false);
-    // header 直系 button：☰ 导航 / cwd 徽标 / 登出（LocaleSwitch 自身按钮在子 div 内，不计入）
-    expect(wrapper.findAll('header > button').at(-1)!.text()).toBe('登出');
+    // 工作页标题栏不再重复设置、语言或退出入口
+    expect(wrapper.find('header').text()).not.toContain('登出');
+    expect(wrapper.find('[aria-label="账号菜单"]').exists()).toBe(true);
     expect(wrapper.find('header [aria-label="语言"]').exists()).toBe(false);
-    expect(wrapper.find('.station-topbar a[href="/settings"]').exists()).toBe(true);
+    expect(wrapper.find('.station-topbar a[href="/settings"]').exists()).toBe(false);
     // 侧栏拖拽把手无障碍标签
     expect(wrapper.find('[role="separator"]').attributes('aria-label')).toBe('调整侧栏宽度');
   });
@@ -136,12 +137,12 @@ describe('WorkbenchView 顶栏 · i18n（issue #101 P2）', () => {
 
     await switchToEnglish(wrapper);
 
-    expect(wrapper.find('header button').text()).toBe('☰ Navigation');
-    expect(wrapper.find('header button').attributes('aria-label')).toBe('Open navigation');
+    expect(wrapper.find('header button').text()).toBe('Projects & sessions');
+    expect(wrapper.find('header button').attributes('aria-label')).toBe('Projects and sessions');
     expect(wrapper.find('header button[title]').attributes('title')).toBe('~/projects/demo (click to copy)');
-    expect(wrapper.find('.rail-profile small').text()).toBe('Administrator');
+    expect(wrapper.find('[aria-label="Account menu"]').exists()).toBe(true);
     expect(wrapper.find('.station-topbar a[href="/admin"]').text()).toContain('Admin console');
-    expect(wrapper.findAll('header > button').at(-1)!.text()).toBe('Sign out');
+    expect(wrapper.find('header').text()).not.toContain('Sign out');
     expect(wrapper.find('[role="separator"]').attributes('aria-label')).toBe('Resize sidebar');
     // 嵌套子组件（SidebarPanel/DirSelect）同样响应（全局 locale 向子树传播）
     expect(wrapper.text()).toContain('＋ New session');
@@ -492,7 +493,7 @@ describe('#428 换账号时的视图接线', () => {
     const conn = FakeES.instances.at(-1)!;
     expect(conn.closed).toBe(false);
 
-    await wrapper.findAll('header > button').at(-1)!.trigger('click'); // 登出
+    wrapper.findComponent({name:'ElDropdown'}).vm.$emit('command','logout'); // 统一头像菜单退出
     await tick();
 
     expect(store.entries).toEqual([]);

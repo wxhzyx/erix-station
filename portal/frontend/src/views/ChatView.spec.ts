@@ -26,7 +26,8 @@ describe('Standalone chat', () => {
   it('needs no project, has a mode switch and supports multiple attachments', async () => {
     const { wrapper } = await setup();
     expect(wrapper.find('aside').exists()).toBe(false);
-    expect(wrapper.text()).toContain('开始一段新对话');
+    expect(wrapper.text()).toContain('新对话');
+    expect(wrapper.text()).not.toContain('文件可直接拖入');
     expect(wrapper.get('input[type=file]').attributes('multiple')).toBeDefined();
     expect(wrapper.get('a[href="/"]').text()).toContain('工作模式');
     expect(wrapper.find('a[href="/mode-settings"]').exists()).toBe(false);
