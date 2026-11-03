@@ -20,13 +20,14 @@ import ComposerBar from '../components/ComposerBar.vue';
 import QueuedInputsBar from '../components/QueuedInputsBar.vue';
 import SessionPickerModal from '../components/SessionPickerModal.vue';
 import LocaleSwitch from '../components/LocaleSwitch.vue';
+import StationModeSwitch from '../components/StationModeSwitch.vue';
 // issue #359（决策 §7 D9）P0b：顶栏「收工灯」——只回答“你的活儿被 git 保护住了吗”，平台零 git 写。
 import GitLightBadge from '../components/GitLightBadge.vue';
 import { useGitLight } from '../composables/useGitLight';
 import { toDisplayText } from '../api'; // issue #281：失败详情进文案前过一道收口（不渗 [object Object]/undefined）
 
 // issue #101 P2：顶栏文案走 i18n（workbench.* / common.*）；LocaleSwitch 挂管理台/登出旁。
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
@@ -234,14 +235,16 @@ function jumpToLatest() {
 
 <template>
   <!-- 拖拽期间 select-none 防选中文本 -->
-  <div class="h-screen flex flex-col bg-white" :class="sidebar.dragging.value && 'select-none'">
-    <header class="flex items-center gap-3 border-b border-black/10 px-3 py-2">
+  <div class="station-work h-screen flex flex-col" :class="sidebar.dragging.value && 'select-none'">
+    <header class="station-header flex flex-wrap items-center gap-3">
+      <StationModeSwitch mode="work" />
+      <router-link to="/mode-settings" class="text-sm underline">{{ locale === 'en' ? 'API settings' : 'API 设置' }}</router-link>
       <button
         class="rounded-md border border-black/20 text-sm px-2.5 py-1 hover:bg-black/5 md:hidden"
         :aria-label="t('workbench.openNavigation')"
         @click="drawerOpen = !drawerOpen"
       >{{ t('workbench.nav') }}</button>
-      <h1 class="text-xl font-medium">FDE Station</h1>
+      <h1 class="station-wordmark">FDE Station</h1>
       <!-- issue #84 P5.4：cwd 徽标（📁 短名；hover 显示全路径；点击复制） -->
       <button
         v-if="store.dirCwd"

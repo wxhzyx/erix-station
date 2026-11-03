@@ -18,6 +18,12 @@ import * as preview from './preview.js';
 import * as internal from './internal.js';
 import * as artifacts from './artifacts.js';
 import * as llm from './llm.js';
+import * as chatMode from './chat-mode.js';
+import { parseDocument } from './document-parser.js';
+import * as projectApprovals from './project-approvals.js';
+import { createApprovalRepository, ApprovalRepositoryError } from './approval-repository.js';
+import { ApprovalMergeError } from './approval-git-merge.js';
+import * as modeSettings from './mode-settings.js';
 import { createLlmGatewayClient, LlmGatewayError } from './llm-gateway.js';
 import * as admin from './admin.js';
 import * as dirs from './dirs.js';
@@ -490,6 +496,7 @@ function readJsonBody(req, limit) {
       }
     });
     req.on('error', (e) => reject(e));
+    req.on('aborted', () => reject(new HttpError(400, 'request_aborted', 'request aborted')));
   });
 }
 
@@ -537,7 +544,7 @@ export async function checkReady(pool, migrationsDir = migrate.defaultMigrations
   }
 }
 
-export function createServer({ pool, config, log = console, docker = null, llmGateway = null }) {
+export function createServer({ pool, config, log = console, docker = null, llmGateway = null, approvalRepository = null, approvalComplete = undefined }) {
   const loginLimiter = createRateLimiter(config.loginRateLimit);
   // TOTP 失败限流按「账户 + IP」计数（防换新 pending_token 绕过）；单 token 尝试上限单独计。
   const totpLimiter = createRateLimiter({
@@ -564,6 +571,9 @@ export function createServer({ pool, config, log = console, docker = null, llmGa
     maxEntries: 10000,
   });
   const ctx = {
+    approvalRepository: approvalRepository ?? createApprovalRepository({ pool, config }),
+    approvalComplete,
+    documentUploads: new Set(),
     pool, config, log, loginLimiter, totpLimiter, totpTokenLimiter, kdfSemaphore, previewTicketLimiter, docker,
     llmGateway: llmGateway ?? createLlmGatewayClient({
       adminUrl: config.llmGatewayAdminUrl ?? 'http://station-litellm:4000',
@@ -584,6 +594,10 @@ export function createServer({ pool, config, log = console, docker = null, llmGa
     try {
       await route(req, res, ctx);
     } catch (err) {
+      if (err instanceof chatMode.ChatModeError || err instanceof projectApprovals.ProjectApprovalError || err instanceof ApprovalRepositoryError || err instanceof ApprovalMergeError) {
+        sendJson(res, err.httpStatus, errorBody(err.code, err.message));
+        return;
+      }
       if (err instanceof HttpError) {
         const headers = { ...(err.headers || {}) };
         if (err.status === 413) headers['Connection'] = 'close'; // 未读完的请求体需断开
@@ -782,6 +796,91 @@ async function routeApi(req, res, ctx, url) {
     res.writeHead(204, { 'Set-Cookie': clearCookieHeader(config.cookie) });
     res.end();
     return;
+  }
+
+  if (pathname === '/api/project-approvals') {
+    const session = await requireSession(req, ctx);
+    if (req.method === 'GET') return sendJson(res, 200, await projectApprovals.listProjectApprovals(pool, session.user.id, {
+      cwd: url.searchParams.get('cwd') ?? undefined, status: url.searchParams.get('status') ?? undefined,
+    }));
+    if (req.method === 'POST') {
+      requireJson(req);
+      const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+      return sendJson(res, 201, await projectApprovals.submitProjectApproval(pool, session.user.id, body, { repository: ctx.approvalRepository }));
+    }
+    throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+  }
+  const projectApprovalMatch = pathname.match(/^\/api\/project-approvals\/([^/]+)$/);
+  if (projectApprovalMatch && req.method === 'GET') {
+    const session = await requireSession(req, ctx);
+    return sendJson(res, 200, await projectApprovals.getProjectApproval(pool, session.user.id, projectApprovalMatch[1]));
+  }
+
+  // Stateless extraction: authenticated input bytes only, no paths, storage or model call.
+  // Reserve before reading the body so concurrent large uploads are bounded as well.
+  if (pathname === '/api/attachments/extract') {
+    const session = await requireSession(req, ctx);
+    if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+    requireJson(req);
+    const uploads = ctx.documentUploads;
+    if (uploads.size >= 4 || uploads.has(session.user.id)) {
+      throw new HttpError(429, 'document_busy', '文档解析繁忙，请稍后重试');
+    }
+    uploads.add(session.user.id);
+    const deadline = setTimeout(() => req.destroy(), 30000);
+    try {
+      const body = await readJsonBody(req, 12 * 1024 * 1024);
+      const result = await parseDocument({ name: body?.name, data: body?.data_base64 });
+      res.setHeader('Cache-Control', 'no-store');
+      return sendJson(res, 200, result);
+    } catch (err) {
+      if (typeof err.code === 'string' && err.code.startsWith('document_')) {
+        throw new HttpError(err.status ?? 422, err.code, err.message);
+      }
+      throw err;
+    } finally {
+      clearTimeout(deadline);
+      uploads.delete(session.user.id);
+    }
+  }
+
+  if (pathname === '/api/me/mode-settings' && req.method === 'GET') {
+    const session = await requireSession(req, ctx);
+    return sendJson(res, 200, await modeSettings.getModeSettings(pool, session.user.id, { gateway: ctx.llmGateway }));
+  }
+  const modeMatch = pathname.match(/^\/api\/me\/mode-settings\/(chat|work)$/);
+  if (modeMatch && req.method === 'PUT') {
+    const session = await requireSession(req, ctx);
+    requireJson(req);
+    const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+    return sendJson(res, 200, await modeSettings.setModeSettings(pool, session.user.id, modeMatch[1], body, { gateway: ctx.llmGateway }));
+  }
+
+  // Project-free chat uses login ownership only; never enters the runner/tool path.
+  if (pathname === '/api/chat/conversations') {
+    const session = await requireSession(req, ctx);
+    if (req.method === 'GET') return sendJson(res, 200, await chatMode.listConversations(pool, session.user.id));
+    if (req.method === 'POST') {
+      requireJson(req);
+      await readJsonBody(req, ctx.config.maxBodyBytes);
+      return sendJson(res, 201, await chatMode.createConversation(pool, session.user.id));
+    }
+  }
+  const chatMatch = pathname.match(/^\/api\/chat\/conversations\/([^/]+)(\/messages)?$/);
+  if (chatMatch) {
+    const session = await requireSession(req, ctx);
+    if (req.method === 'GET' && !chatMatch[2]) {
+      return sendJson(res, 200, await chatMode.getConversation(pool, session.user.id, chatMatch[1]));
+    }
+    if (req.method === 'POST' && chatMatch[2]) {
+      requireJson(req);
+      const body = await readJsonBody(req, 6 * 1024 * 1024);
+      return sendJson(res, 200, await chatMode.sendChatMessage(pool, session.user.id, chatMatch[1], body, {
+        resolveProvider: (userId, db) => modeSettings.resolveChatLlmProvider(db, userId, {
+          gateway: ctx.llmGateway, gatewayUrl: ctx.config.llmGatewayAdminUrl ?? ctx.config.llmGatewayUrl,
+        }),
+      }));
+    }
   }
 
   if (req.method === 'GET' && pathname === '/api/me') {
@@ -986,6 +1085,23 @@ async function requireAdmin(req, ctx) {
 async function handleAdminApi(req, res, ctx, url) {
   const { pathname } = url;
   const session = await requireAdmin(req, ctx); // 所有 /api/admin/* 端点统一先鉴权
+
+  const approvalAction = pathname.match(/^\/api\/admin\/project-approvals\/([^/]+)\/(review|approve|merge)$/);
+  if (approvalAction) {
+    if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed', 'method not allowed');
+    requireJson(req);
+    const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+    const [_, approvalId, action] = approvalAction;
+    const repository = ctx.approvalRepository;
+    if (action === 'review') return sendJson(res, 200, await projectApprovals.reviewProjectApproval(ctx.pool, session.user.id, approvalId, {
+      repository, complete: ctx.approvalComplete,
+      resolveProvider: (adminId) => modeSettings.resolveChatLlmProvider(ctx.pool, adminId, {
+        gateway: ctx.llmGateway, gatewayUrl: ctx.config.llmGatewayAdminUrl ?? ctx.config.llmGatewayUrl,
+      }),
+    }));
+    const handler = action === 'approve' ? projectApprovals.approveProjectApproval : projectApprovals.mergeProjectApproval;
+    return sendJson(res, 200, await handler(ctx.pool, session.user.id, approvalId, body, { repository }));
+  }
 
   const adminGitCredentialMatch = pathname.match(/^\/api\/admin\/fdes\/([^/]+)\/git-credential$/);
   if (adminGitCredentialMatch) {
@@ -1244,7 +1360,9 @@ async function handleAdminApi(req, res, ctx, url) {
     if (action === null && req.method === 'PATCH') {
       requireJson(req);
       const body = await readJsonBody(req, ctx.config.maxBodyBytes);
-      return sendJson(res, 200, await admin.updateUser(ctx.pool, userId, body, { actorId: session.user.id }));
+      const result = await admin.updateUser(ctx.pool, userId, body, { actorId: session.user.id });
+      if (body.status === 'disabled') await modeSettings.revokeChatLlmConfig(ctx.pool, userId, { gateway: ctx.llmGateway });
+      return sendJson(res, 200, result);
     }
     if (action === null && req.method === 'DELETE') {
       const result = await admin.deleteUser(ctx.pool, {
@@ -1253,6 +1371,7 @@ async function handleAdminApi(req, res, ctx, url) {
         config: ctx.config,
         log: ctx.log,
       });
+      await modeSettings.revokeChatLlmConfig(ctx.pool, userId, { gateway: ctx.llmGateway });
       if (result.offboarding) return sendJson(res, 202, { offboarding: result.offboarding });
       res.writeHead(204);
       res.end();
@@ -1660,7 +1779,7 @@ function queuedInputDeps(ctx) {
 async function handlePostQueuedInput(req, res, ctx, sessionId) {
   const session = await requireSession(req, ctx);
   requireJson(req);
-  const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+  const body = await readJsonBody(req, 2 * 1024 * 1024);
   // 校验前置到幂等包装之前（F3 口径，同 handlePostMessage）：非法体 400 且不占幂等占位行。
   // `kind` 缺省 = `steer`（前端主键 Enter 的动作，也是旧客户端不传 kind 时唯一的合理默认）。
   // ⚠ 缺省必须在**算 requestHash 之前**定形：否则「不传 kind」与「传 steer」的同 key 重试会被
@@ -1746,7 +1865,7 @@ async function handlePostMessage(req, res, ctx, sessionId) {
   const session = await requireSession(req, ctx);
   requireJson(req);
   // 先读体（与其它端点一致：413/400 行为不受密钥校验影响），再校验体与 Idempotency-Key 头
-  const body = await readJsonBody(req, ctx.config.maxBodyBytes);
+  const body = await readJsonBody(req, 2 * 1024 * 1024);
   // F3：请求体校验**前置到幂等包装之前**——非法体 400 且不占幂等占位行；
   // 否则首次非法体占位后，同 key 的合法重试会因 request_hash 不同撞 409 idempotency_key_reuse。
   const { content, attachments } = sessions.validateMessageBody(body);

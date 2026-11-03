@@ -341,3 +341,22 @@ test('ErrorCtor 注入：sessions.js 传 SessionError ⇒ http.js 的错误映�
   assert.ok(bare instanceof LlmChatError);
   assert.equal(bare.name, 'LlmChatError');
 });
+
+test('deadline includes a stalled response body after successful headers', async () => {
+  let signal;
+  await assert.rejects(chatCompletion({ provider: provider(), messages, timeoutMs: 25, log: null,
+    fetchImpl: async (_url, init) => { signal = init.signal; return { ok: true, status: 200, text: () => new Promise(() => {}) }; },
+  }), (err) => err.code === 'llm_upstream_failed' && err.details?.reason === 'timeout');
+  assert.equal(signal.aborted, true);
+});
+
+test('response stream is bounded before assembling and JSON parsing', async () => {
+  let signal;
+  await assert.rejects(chatCompletion({ provider: provider(), messages, log: null,
+    fetchImpl: async (_url, init) => {
+      signal = init.signal;
+      return new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(8 * 1024 * 1024 + 1)); controller.close(); } }));
+    },
+  }), (err) => err.code === 'llm_upstream_failed' && err.details?.reason === 'response_too_large');
+  assert.equal(signal.aborted, true);
+});

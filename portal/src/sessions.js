@@ -1,3 +1,4 @@
+import { validateWorkAttachments, workMessageText } from './work-attachments.js';
 // 会话与对话链路（portal.md §4/§5；P5 去项目化 docs/design/directory-as-project.md 定稿）。
 // 端点：GET/POST /api/sessions、GET/PATCH/DELETE /api/sessions/:id、
 //       POST /api/sessions/:id/messages（建 run 入队）、POST .../stop（写 cancel_requested_at）。
@@ -78,16 +79,8 @@ export function validateMessageBody(body) {
   if (content.length > MAX_MESSAGE_CONTENT_LENGTH) {
     throw new SessionError('validation_failed', `content 过长（≤${MAX_MESSAGE_CONTENT_LENGTH} 字符）`, { details: { field: 'content' } });
   }
-  const raw = body?.attachments;
-  if (raw !== undefined && !Array.isArray(raw)) {
-    throw new SessionError('validation_failed', 'attachments 必须为数组', { details: { field: 'attachments' } });
-  }
-  const attachments = (raw ?? []).map((a) => {
-    if (!a || typeof a !== 'object' || !['file', 'image'].includes(a.kind) || typeof a.path !== 'string' || !a.path) {
-      throw new SessionError('validation_failed', 'attachments 元素须为 {kind: file|image, path, name?}', { details: { field: 'attachments' } });
-    }
-    // 只保留实际消费的字段（多送的 UI 字段既不落库也不参与幂等 hash）
-    return a.name === undefined ? { kind: a.kind, path: a.path } : { kind: a.kind, path: a.path, name: a.name };
+  const attachments = validateWorkAttachments(body?.attachments, (message) => {
+    throw new SessionError('validation_failed', message, { details: { field: 'attachments' } });
   });
   return { content, attachments };
 }
@@ -600,7 +593,7 @@ export async function postMessage(pool, {
     // 已在幂等与事务之前以 400 validation_failed 拒绝空白 content）；兜底捕获转同一错误码，
     // 保证任何回归都不把 400 语义升格成 500。
     try {
-      await appendUserInputTurn(client, { key: s.id, text: safeContent, messageId: msg.rows[0].id });
+      await appendUserInputTurn(client, { key: s.id, text: workMessageText(safeContent, safeAttachments), messageId: msg.rows[0].id });
     } catch (err) {
       if (err instanceof TypeError) {
         throw new SessionError('validation_failed', err.message, { details: { field: 'content' } });

@@ -287,3 +287,12 @@ export function formatStartedAgo(startedAtIso: string, nowMs: number = Date.now(
   if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`;
   return `${Math.floor(minutes / (60 * 24))}d`;
 }
+
+
+/** Heartbeat observations expire even if refreshing fails or the tab was suspended. */
+export function runningPreviewPorts(items: PreviewPortItem[], now = Date.now()): PreviewPortItem[] {
+  return items.filter(item => {
+    const observed = Date.parse(item.observed?.observed_at ?? '');
+    return Number.isFinite(observed) && now - observed < 45_000 && observed <= now + 5000;
+  });
+}

@@ -200,3 +200,56 @@ describe('ComposerBar · issue #261B「重试上一条」按钮', () => {
     expect(btn!.text()).toBe('Retry last');
   });
 });
+
+describe('work upload interruption', () => {
+  it('ignores file reads completing after unmount and disables removal during read', async () => {
+    const { store, wrapper } = setup();
+    store.pendingAttachments = [{ kind: 'file', path: 'upload:old.txt', name: 'old.txt', text: 'old' }];
+    let resolve!: (buffer: ArrayBuffer) => void;
+    const file = { name: 'late.txt', size: 4, arrayBuffer: () => new Promise<ArrayBuffer>(r => { resolve = r; }) };
+    const input = wrapper.get('input[type="file"]');
+    Object.defineProperty(input.element, 'files', { value: [file] });
+    await input.trigger('change');
+    expect(wrapper.get('[aria-label="移除 old.txt"]').attributes('disabled')).toBeDefined();
+    wrapper.unmount();
+    resolve(new TextEncoder().encode('late').buffer);
+    await flushPromises();
+    expect(store.pendingAttachments.map(a => a.name)).toEqual(['old.txt']);
+  });
+});
+
+it('retains oversized recalled attachment sets and explains splitting/removal', async () => {
+  const { store, wrapper } = setup();
+  store.pendingAttachments = Array.from({ length: 9 }, (_, index) => ({ kind: 'file', path: `upload:${index}.txt`, name: `${index}.txt`, text: 'retained' }));
+  await flushPromises();
+  expect(wrapper.text()).toContain('取回的文件超出单次发送限制');
+  expect(store.pendingAttachments).toHaveLength(9);
+  expect(wrapper.get('[aria-label="移除 0.txt"]').attributes('disabled')).toBeUndefined();
+  await wrapper.get('[aria-label="移除 0.txt"]').trigger('click');
+  expect(store.pendingAttachments).toHaveLength(8);
+  expect(wrapper.text()).not.toContain('取回的文件超出单次发送限制');
+});
+
+it('discards work document extraction on directory navigation and aborts its request', async () => {
+  const { store, wrapper } = setup();
+  store.lastSend = { sessionId: 's1', content: 'prior task' };
+  store.retryAvailable = true;
+  let resolve!: (value: Response) => void;
+  let signal: AbortSignal | undefined;
+  vi.stubGlobal('fetch', vi.fn((_path: string, opts: RequestInit) => {
+    signal = opts.signal ?? undefined;
+    return new Promise<Response>(r => { resolve = r; });
+  }));
+  const input = wrapper.get('input[type=file]');
+  Object.defineProperty(input.element, 'files', { value: [new File(['synthetic'], 'private.docx')] });
+  await input.trigger('change'); await new Promise(r => setTimeout(r, 30)); await flushPromises();
+  expect(wrapper.get('[data-queued-kind=send]').attributes('disabled')).toBeDefined();
+  expect(wrapper.findAll('button').find(b => b.text().includes('重试'))!.attributes('disabled')).toBeDefined();
+  store.dirCwd = '/different'; await flushPromises();
+  expect(signal?.aborted).toBe(true);
+  resolve(new Response(JSON.stringify({ text: 'private', warnings: ['private warning'] }), { status: 200 }));
+  await flushPromises();
+  expect(store.pendingAttachments).toEqual([]);
+  expect(wrapper.text()).not.toContain('private warning');
+  wrapper.unmount();
+});
