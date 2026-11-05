@@ -561,7 +561,7 @@ P1 交付完成 = 同时满足：
 |---|---|---|---|
 | 1 | P1 是否含预览/真实 LLM | 不含预览/真实 LLM；对话验收走 mock 网关（deploy §7.3） | §4.1 分支 |
 | 2 | preview ticket TTL / 预览 cookie TTL | 60s / 15min 滚动（portal §2.8 ⚠️） | §3.2 B、§5-5 |
-| 3 | 租约/心跳/事件批量/背压/spool 配额/capacity | 90s/15s/250ms·2KB/10000·4MB/256MB·1GB/4（env §11.1 + runner §15 ⚠️） | §3.4 R7/R8 |
+| 3 | 租约/心跳/事件批量/背压/spool 配额/capacity | 90s/15s/100ms·2KB/10000·4MB/256MB·1GB/4（env §11.1 + runner §15 ⚠️） | §3.4 R7/R8 |
 | 4 | materializer outbox 复用 `route_outbox` 还是新增表 | ✅ 已定稿：新增 `materialize_outbox` + `materialize_revisions`（A7，不复用 `route_outbox`，schema.sql §9 / model §1.22） | §3.3 物化测试的 outbox 落点 |
 | 5 | argon2id 参数 / 口令长度 / TOTP 强制 | `m=19MiB,t=2,p=1` / ≥12 / 强制（portal §2.9.4 ⚠️） | §3.2 A |
 

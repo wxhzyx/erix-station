@@ -61,7 +61,7 @@ const CFG = {
   // issue #79：冷启动 gate 的最长等待——最多 2 个心跳周期（默认 30s）。超时后放行 claim
   // 并 warn「llmModels 未就绪，run 将回退 config 占位模型」，防心跳故障时永久卡死。
   hbInitMaxWaitMs: Number(process.env.ERIX_AGENTD_HB_INIT_MAX_WAIT_MS || 2 * (Number(process.env.ERIX_HEARTBEAT_MS || 15000))),
-  batchWindowMs: Number(process.env.ERIX_BATCH_WINDOW_MS || 250),
+  batchWindowMs: Number(process.env.ERIX_BATCH_WINDOW_MS || 100),
   batchBytes: Number(process.env.ERIX_BATCH_BYTES || 2048),
   maxEventsPerBatch: 200,
   maxBatchBytes: 256 * 1024,

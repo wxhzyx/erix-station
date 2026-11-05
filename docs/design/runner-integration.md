@@ -122,7 +122,7 @@ FDE 容器（不 publish 任何端口；仅接自己的 `fde-<name>` `/29` 网�
 | **网络** | 唯一出站：→ portal（SSE + POST，经 Traefik host:443）；不监听任何对外端口 | **无任何平台网络 IO**；只经 IPC 与 agentd 通讯；LLM 请求经 worker 内 provider 发 `llm.<base>`（占位 key，真 key 由 Traefik 注入，规格 §11） | 监听 `:8080`（仅宿主回环 `127.0.0.1:8080`）；internal 端点经 Traefik 回环到 portal |
 | **DB** | 不直连（无凭据） | 不直连 | **唯一业务写方**（D1'） |
 | **任务** | claim 长轮询领任务；lease 续期（随心跳）；准备工作（项目目录）；认领失败 release；**run 终态产物捕获上传（U13，issue #64，§6.6）** | 跑 `runToolLoop`；组装引擎参数（provider/tools/store/task） | 入队（`run_queue`）；租约判定与 re-claim；状态收敛 |
-| **事件** | 批量（250ms/2KB）、重试、顺序保证、spool 兜底 | 引擎回调 → IPC 即发（不批量） | 分配 seq、写 `run_events`、SSE 广播 |
+| **事件** | 批量（100ms/2KB）、重试、顺序保证、spool 兜底 | 引擎回调 → IPC 即发（不批量） | 分配 seq、写 `run_events`、SSE 广播 |
 | **transcript/checkpoint** | store_request 的无状态转发（加 Authorization） | `TranscriptStore` HTTP adapter（IPC 版）的调用方 | 端点落 `transcript_rounds` / `run_checkpoints` |
 | **审批** | 中转：worker await ↔ portal 审批单；SSE 快通道 + 轮询兜底；10min 超时拒绝 | 在 `executeTool` 包装层发起并 await；收到拒绝则返回 tool_result「被拒绝」 | 审批单 CRUD、决定写库、SSE 下发 |
 | **停止** | SSE `stop_request` / 心跳兜底 → IPC `abort` | `AbortController.abort()` → 引擎收敛 `aborted`（`src/loop.js:712-717`） | 写 `cancel_requested_at`；发 SSE；心跳响应兜底 |
@@ -467,7 +467,7 @@ internal 端点错误信封沿用 portal.md §1.1；下表为本通道特有 cod
 worker 内存队列（client_event_id = run_id:attempt:计数；溢出走 spool，§7.5）
   │  IPC event（drain 循环）
   ▼
-agentd 批量缓冲（250ms 或 2KB 先到者触发 ⚠️）
+agentd 批量缓冲（100ms 或 2KB 先到者触发 ⚠️）
   │  POST /api/internal/runs/:id/events（at-least-once，无限重试）
   ▼
 portal：事务内 chat_sessions.last_seq 逐条 +1 分配 seq
@@ -482,8 +482,8 @@ portal：事务内 chat_sessions.last_seq 逐条 +1 分配 seq
 
 | 参数 | 值 | 说明 |
 |---|---|---|
-| 时间窗口 | **250ms**（⚠️ 待决策者确认） | 到点即发，不论条数 |
-| 大小窗口 | **2KB**（⚠️） | 累积 payload 字节到阈值立即发（delta 洪峰时实际批次间隔远小于 250ms） |
+| 时间窗口 | **100ms**（⚠️ 待决策者确认） | 到点即发，不论条数 |
+| 大小窗口 | **2KB**（⚠️） | 累积 payload 字节到阈值立即发（delta 洪峰时实际批次间隔远小于 100ms） |
 | 单批上限 | 200 条 / 256KB | 防单请求过大；超出切多批顺序发送 |
 | 顺序 | worker 单 run 内严格按 `client_event_id`（`run_id:attempt:计数`）递增 | 引擎回调本身有序；批量不重排；跨 attempt 由 attempt 前缀分界（§7.3） |
 
@@ -554,10 +554,10 @@ portal：事务内 chat_sessions.last_seq 逐条 +1 分配 seq
 
 | 侧 | 职责 |
 |---|---|
-| 服务端 | **不逐字推流**：delta 事件走 §7.2 批量（250ms/2KB）；SSE 原样透传批次内事件 |
-| 前端 | 收到一批 `assistant_delta` 后**本地逐字动画**（20–30ms/字 ⚠️）；动画队列积压超过阈值（如 200 字）自动加速/跳播追平，避免「模型已说完、屏幕还在打」 |
+| 服务端 | **不逐字推流**：delta 事件走 §7.2 批量（100ms/2KB）；SSE 原样透传批次内事件 |
+| 前端 | 收到 `assistant_delta` 后按动画帧平滑追平，单次积压最多延后 120ms；结束立即显示完整内容，减少动态效果偏好下不加动画 |
 
-> 原理：人眼对 3–5 字/100ms 的平滑输出即感知为「实时打字」；服务端 250ms 批量引入的额外延迟被前端动画队列吸收，总流量下降一个数量级（delta 合并进批次）。
+> 100ms 批量减少请求次数；前端只平滑短暂积压，不延后最终结果。实际首字延迟还取决于模型和网络。
 
 ### 8.2 端到端延迟预算表（首字符到达眼球）
 
@@ -565,14 +565,14 @@ portal：事务内 chat_sessions.last_seq 逐条 +1 分配 seq
 |---|---|---|
 | 引擎 `onDelta` → worker 队列 | <1ms | 同进程函数调用（`src/loop.js:610` 回调） |
 | worker → agentd（IPC） | 1–2ms | fork 通道，本机 |
-| agentd 批量窗口 | 0–250ms | §7.2（平均 ~125ms） |
+| agentd 批量窗口 | 0–100ms | §7.2（平均 ~50ms） |
 | agentd → portal POST | 2–10ms | 同宿主机（经 Traefik host:443 回环到 portal 回环 `127.0.0.1:8080`） |
 | portal 落库 + 广播 | 2–10ms | 单事务 + EventEmitter |
 | SSE → 浏览器 | 5–50ms | 内网/VPN |
-| **服务端小计** | **≈140–320ms（p50 ≈ 150ms）** | — |
-| 前端动画 | 20–30ms/字，队列自适应加速 | 视觉层，不阻塞后续批次渲染 |
+| **服务端小计** | **约 10–165ms（规划预算，非实测）** | — |
+| 前端动画 | 0–120ms，按动画帧追平 | 视觉层，不阻塞后续批次渲染 |
 
-> 对照「直推逐字」方案：首字符快 ~120ms，但 SSE 消息量 ×50（每字一条），DB 写放大同倍。**批量 + 本地动画是以 ~120ms 不可感知延迟换一个数量级的负载**，取舍成立 ⚠️。
+> 批量窗口可用 `ERIX_BATCH_WINDOW_MS` 调整；评估实际延迟时应区分模型首字时间、事件传递和浏览器渲染。
 
 ---
 
@@ -789,7 +789,7 @@ FDE 浏览器        portal                agentd               worker（execute
 | 2 | 通讯形态：agentd → portal **SSE 下行 + POST 上行**，容器零监听（取代 portal → 容器 :3000 push） | 采用（§4/§11.2） |
 | 3 | 派单：**拉取**（claim 长轮询 hold ≤30s + portal 侧 NOTIFY/事件唤醒）；push 优化 P2 后置 | 采用（§4.2 U1） |
 | 4 | 租约/心跳参数：lease 90s、心跳 15s、3 次丢失（45s）判容器死 | 采用（§4.2/§6） |
-| 5 | 事件批量：250ms 或 2KB 先到者；打字机 20–30ms/字前端动画 | 采用（§7.2/§8） |
+| 5 | 事件批量：100ms 或 2KB 先到者；前端最多 120ms 追平动画 | 采用（§7.2/§8） |
 | 6 | worker 隔离：每 run 一个 fork；P2 评估 worker_threads | 采用（§13） |
 | 7 | 审批：超时 10min → 按 denied 继续；超时后补决定的处置（§10.1 末） | 采用 |
 | 8 | ~~worktree~~ **D8 修订（2026-09-24，AGENTS.md §7）**：cwd 直达项目目录——agentd 只确保 `~/projects/<name>` 存在，不再创建/清理 worktree；目录内容归 FDE（原定，规格 §12.2） | 修订（§6.2） |

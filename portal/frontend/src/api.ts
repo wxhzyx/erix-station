@@ -1,6 +1,7 @@
 // API 客户端：语义逐行对齐旧 portal/static/index.html 的 api() 内联实现——
 // JSON 信封、错误 message 取自 body.error.message，兜底文案走 errors.requestFailed（issue #101 P2）。
 
+import { readChatStream } from './lib/chatStream';
 import { i18n } from './i18n';
 import { isPasswordChangeRequired, notifyRestrictedSession } from './lib/restrictedSession';
 
@@ -80,11 +81,12 @@ export function parseRetryAfter(value: string | null | undefined): number | null
  */
 
 // 401/403 之外的非预期错误（网络断开等）也会带兜底文案，便于登录页直接展示。
-export async function api<T = unknown>(path: string, opts: RequestInit = {}): Promise<T> {
+export async function api<T = unknown>(path: string, opts: RequestInit = {}, onDelta?: (text: string) => void): Promise<T> {
   const r = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
     ...opts,
+    headers: { 'Content-Type': 'application/json', ...(onDelta ? { Accept: 'text/event-stream' } : {}), ...opts.headers },
   });
+  if (r.ok && onDelta && r.headers.get('content-type')?.includes('text/event-stream')) return readChatStream<T>(r, onDelta, opts.signal);
   const body = (await r.json().catch(() => ({}))) as {
     error?: { message?: string; code?: string; details?: Record<string, unknown> };
   } & T;

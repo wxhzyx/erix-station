@@ -21,7 +21,7 @@
 | D-4 | **FDE 容器零 LLM 凭据**：Traefik 按来源子网注入 `Authorization` | 见 §4-L7；比「虚拟 key 放容器」更强（实测可覆盖伪造头，§10 证据 8） |
 | D-5 | **internal API 经 Traefik**（`/api/internal/*` + 来源白名单 + per-container token） | 避免 portal 接入每条 FDE 网络 |
 | D-6 | **文件投递走 portal 直写宿主 bind mount**（`/srv/erix/users/<fde>/`） | 无需任何入站网络（详见 issue #7） |
-| D-7 | **流式**：单一合并点（agentd，250ms/2KB）+ 边界 flush；reasoning 粗粒度落库；工具结果阈值另存 | 见 §9 |
+| D-7 | **流式**：单一合并点（agentd，100ms/2KB）+ 边界 flush；reasoning 粗粒度落库；工具结果阈值另存 | 见 §9 |
 | D-8 | **加固三件套**：`INPUT` + `DOCKER-USER` 两层防火墙规则 + `ipAllowList` + `aliasHeadersStrategy: delete`（原「仅 DOCKER-USER」经 §6.1 评审修正为两层） | 见 §6.1 |
 | D-9 | **reconciler 声明式收敛**（网络、路由、IP 漂移） | 见 §8 |
 | D-10 | **子网由 portal 管 IPAM**（DB 注册表，系统推荐、管理员可改） | 见 §3 |
@@ -356,10 +356,10 @@ Traefik 求值顺序：**router 规则（含 `ClientIP`、`PathPrefix`）→ 中
 
 ## 9. 流式与存储策略
 
-**合并（避免打爆 DB）**：worker 只做累积与**边界 flush**（`tool_use`/`tool_result`/`round_end`/`judge`/`run_end` 前必须 flush，否则 UI 顺序错乱）；agentd 是**唯一时间窗口**（250ms 或 2KB，单批 ≤200 条/256KB）。
-→ 80 chunk/s 合并后 ≈ **4–8 行/秒/run**。
+**合并（避免打爆 DB）**：worker 只做累积与**边界 flush**（`tool_use`/`tool_result`/`round_end`/`judge`/`run_end` 前必须 flush，否则 UI 顺序错乱）；agentd 是**唯一时间窗口**（100ms 或 2KB，单批 ≤200 条/256KB）。
+→ 批次减少 HTTP 请求数；DB 事件行数取决于引擎事件粒度，不把批次数当成落库行数。
 
-**事件 → UI**：`assistant_delta` 逐字动画（前端 20–30ms/字）｜`reasoning_delta` **折叠面板**｜`tool_call_delta`→`tool_use`→`tool_result` 工具卡片状态机｜`judge` 轻提示｜`usage` 头部计数｜`attempt/recovering/recovered` 重试指示｜`run_end` 收尾。
+**事件 → UI**：`assistant_delta` 按动画帧平滑显示（最多 120ms 追平）｜`reasoning_delta` **折叠面板**｜`tool_call_delta`→`tool_use`→`tool_result` 工具卡片状态机｜`judge` 轻提示｜`usage` 头部计数｜`attempt/recovering/recovered` 重试指示｜`run_end` 收尾。
 
 **存储（已确认）**：
 

@@ -1,5 +1,6 @@
 // Project-free chat. This module never schedules a runner or enables tools.
 import { randomUUID, createHash } from 'node:crypto';
+import { createSecretFilter } from './llm-stream.js';
 import { chatCompletion } from './llm-chat.js';
 
 export class ChatModeError extends Error {
@@ -82,7 +83,7 @@ export async function getConversation(pool, userId, id) {
 // Transaction lock serializes turns across processes, not just this server instance.
 // NOWAIT makes a repeated click fail promptly; request_id makes completed retries free.
 // Neither user nor assistant turns are committed on upstream failure.
-export async function sendChatMessage(pool, userId, id, body, { resolveProvider, fetchImpl, complete = chatCompletion } = {}) {
+export async function sendChatMessage(pool, userId, id, body, { resolveProvider, fetchImpl, complete = chatCompletion, onDelta, onStart, signal } = {}) {
   const input = validateChatBody(body);
   const hash = createHash('sha256').update(JSON.stringify({ content: input.content, attachments: input.attachments })).digest('hex');
   const db = await pool.connect();
@@ -105,14 +106,19 @@ export async function sendChatMessage(pool, userId, id, body, { resolveProvider,
     const provider = await resolveProvider(userId, db);
     if (!provider?.api_key || !provider?.base_url || !provider?.model) throw new ChatModeError('llm_not_configured', '聊天模型尚未配置，请联系管理员', { httpStatus: 409 });
     if (provider.supportsImages === false && [...previous, user].some((m) => m.attachments?.some((f) => IMAGE_MIMES.has(f.mime_type)))) throw new ChatModeError('validation_failed', '当前聊天模型不支持图片，请联系管理员分配支持图片的模型');
+    signal?.throwIfAborted();
+    const filter = createSecretFilter(provider.api_key, onDelta);
+    await onStart?.();
     let response;
     try {
-      response = await complete({ provider, messages, maxTokens: 4096, timeoutMs: 60000, fetchImpl, log: null });
+      response = await complete({ provider, messages, maxTokens: 4096, timeoutMs: onDelta ? 180000 : 60000, fetchImpl, log: null, stream: !!onDelta, signal, onDelta: onDelta ? filter.push : undefined });
     } catch {
       throw new ChatModeError('llm_upstream_failed', '聊天模型调用失败，请稍后重试或联系管理员', { httpStatus: 502 });
     }
     if (typeof response.text !== 'string' || !response.text.trim() || response.text.length > 1000000) throw new ChatModeError('llm_upstream_failed', '聊天 API 未返回有效文本', { httpStatus: 502 });
     // Never echo a credential even when an upstream unexpectedly includes it in output.
+    signal?.throwIfAborted();
+    await filter.finish();
     const assistantText = provider.api_key ? response.text.split(provider.api_key).join('[redacted]') : response.text;
     const rows = [];
     const previousCount = previous.length;

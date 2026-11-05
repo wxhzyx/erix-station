@@ -1,3 +1,4 @@
+import { readCompletionStream } from './llm-stream.js';
 // portal/src/llm-chat.js —— portal 侧**唯一**的「发一次 OpenAI 兼容 chat/completions」出口
 // （issue #315 的追加范围，工单 261020-04）。
 //
@@ -110,7 +111,7 @@ export function resolveMaxTokens(value) {
  * @param {number} [args.maxTokens] 输出预算。**不给就填 `LLM_CHAT_DEFAULT_MAX_TOKENS`（512）**；
  *        请求体里 `max_tokens` 恒存在（发出前有断言）。
  * @param {number} [args.temperature] 给了才透传（不给就整个字段省略，与收口前口径一致）。
- * @param {boolean} [args.stream=false] 本出口只做一次性非流式往返；`true` 也会照发（调用方自负）。
+ * @param {boolean} [args.stream=false] true 时消费 SSE 并通过 onDelta 推送正文，结束后仍返回完整文本。
  * @param {number} [args.timeoutMs=15000] 到点**必然**明确报错（502），不悬挂：竞速用的定时器与
  *        `AbortController` 一起走，即使注入的假 fetch 完全不理会 signal 也拦得住。
  * @param {(url: string, init: object) => Promise<any>} [args.fetchImpl=fetch] 注入点（测试用假 fetch）。
@@ -123,7 +124,7 @@ export function resolveMaxTokens(value) {
  * @throws {LlmChatError|SessionError} 见文件头「错误映射」。
  */
 export async function chatCompletion({
-  provider, messages, maxTokens, temperature, stream = false,
+  provider, messages, maxTokens, temperature, stream = false, onDelta, signal,
   timeoutMs = LLM_CHAT_DEFAULT_TIMEOUT_MS, fetchImpl = fetch, ErrorCtor,
   log = console, logTag = 'llm-chat', logContext = '',
 } = {}) {
@@ -162,6 +163,7 @@ export async function chatCompletion({
     messages,
     ...(temperature === undefined || temperature === null ? {} : { temperature }),
     stream: stream === true,
+    ...(stream === true ? { stream_options: { include_usage: true } } : {}),
     // #315：**必发**。省略 ⇒ 网关注入模型级 `litellm_params.max_tokens`（不是这次调用该用的预算）。
     max_tokens: maxTokensResolved,
   };
@@ -171,7 +173,12 @@ export async function chatCompletion({
       500, { field: 'max_tokens' });
   }
 
+  signal?.throwIfAborted();
   const controller = new AbortController();
+  let rejectAbort;
+  const cancelled = new Promise((_resolve, reject) => { rejectAbort = reject; });
+  const onAbort = () => { controller.abort(); rejectAbort(signal.reason ?? new Error("Cancelled")); };
+  signal?.addEventListener("abort", onAbort, { once: true });
   let timedOut = false;
   let timer = null;
   // 「到点必须明确报错，不许悬挂」：与 fetch **竞速**，所以注入的假 fetch 无视 AbortSignal 也拦得住。
@@ -198,6 +205,10 @@ export async function chatCompletion({
       body: JSON.stringify(payload),
       signal: controller.signal,
       });
+      if (stream && response.ok && response.headers?.get?.('content-type')?.includes('text/event-stream')) {
+        const text = await readCompletionStream(response.body, { signal: controller.signal, onDelta });
+        return { response, text: JSON.stringify({ choices: [{ message: { content: text } }] }) };
+      }
       // Bound response memory and include body consumption in the same timeout.
       // Native fetch streams are capped before assembling; text-only test doubles
       // retain compatibility but still participate in the deadline.
@@ -226,7 +237,7 @@ export async function chatCompletion({
       return { response, text };
     })();
     pending.catch(() => {}); // 输掉竞速后的异步拒绝不该变成 unhandled rejection
-    const result = await Promise.race([pending, budget]);
+    const result = await Promise.race([pending, budget, cancelled]);
     res = result.response;
     raw = result.text;
   } catch (err) {
@@ -240,6 +251,7 @@ export async function chatCompletion({
     });
   } finally {
     if (timer !== null) clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
   }
 
   if (!res.ok) {
