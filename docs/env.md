@@ -453,7 +453,7 @@ Portainer 与本平台的关系（平台规范固定，不随环境变化）：P
 | 心跳间隔 / 判死阈值 | 15 / 45 | s | — | agentd（runner §4.2 U4） | 连续 3 次丢失（45s）→ `containers.status` 视 `exited` | `containers.last_heartbeat` 延迟、判死次数 |
 | 审批轮询兜底 / 审批超时 | 5 / 600 | s | — | agentd（runner §10.1） | 10min 无决定 → 按 denied 继续；审批单由 portal reaper 打 `expired`（权威审计态，portal.md §9.12/model.md） | 审批 pending 时长、超时数 |
 | store adapter checkpoint 重试 | 3 次（1s→2s→5s） | 次 / s | 3 | worker（runner §9.2） | 耗尽 → `checkpoint_failed` → run `failed` | checkpoint 重试率、`checkpoint_failed` 数 |
-| 事件批量窗口 | 250ms 或 2KB 先到 | ms / KB | 单批 200 条 / 256KB | agentd（runner §7.2） | — | 批次大小、批间隔、端到端延迟 |
+| 事件批量窗口 | 100ms 或 2KB 先到 | ms / KB | 单批 200 条 / 256KB | agentd（runner §7.2） | — | 批次大小、批间隔、端到端延迟 |
 | 背压（worker / agentd 内存队列） | 10000 条/4MB；20000 条/8MB | 条 / MB | 见左 | worker / agentd（runner §7.4） | 超限落 spool；spool 也满 → run `spool_full` | 队列深度、spool 用量 |
 | spool 配额 | 每 run 256MB / 每容器 1GB | MB | 见左 | agentd（runner §7.5） | 写满 → 事件不静默丢，显式 `spool_full` run 失败 | spool 磁盘占用 |
 | agentd 并发 `capacity` | 4 | run | 4 | agentd claim 上报（runner §13） | portal 不超发 | 并发 run 数 |

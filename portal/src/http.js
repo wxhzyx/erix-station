@@ -5,6 +5,7 @@
 // cookie 语义见 docs/api/portal.md §2.5；两步登录见 §2.2/§2.3。
 
 import http from 'node:http';
+import { streamChatResponse } from './chat-response.js';
 import { listRuntimePorts } from './runtime-ports.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -924,11 +925,14 @@ async function routeApi(req, res, ctx, url) {
     if (req.method === 'POST' && chatMatch[2]) {
       requireJson(req);
       const body = await readJsonBody(req, 6 * 1024 * 1024);
-      return sendJson(res, 200, await chatMode.sendChatMessage(pool, session.user.id, chatMatch[1], body, {
+      const send = (options = {}) => chatMode.sendChatMessage(pool, session.user.id, chatMatch[1], body, {
+        ...options,
         resolveProvider: (userId, db) => modeSettings.resolveChatLlmProvider(db, userId, {
           gateway: ctx.llmGateway, gatewayUrl: ctx.config.llmGatewayAdminUrl ?? ctx.config.llmGatewayUrl,
         }),
-      }));
+      });
+      if (req.headers.accept?.includes('text/event-stream')) return streamChatResponse(res, send);
+      return sendJson(res, 200, await send());
     }
   }
 

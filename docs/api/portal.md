@@ -2184,7 +2184,7 @@ portal 自身限流（登录爆破等，§2）也用 `429 rate_limited`，统一
 
 **`client_event_id` 重启/重领不碰撞（attempt 前缀）**：`client_event_id` 中的 `attempt` 来自 claim ticket（`run_queue.attempts`）；re-claim 后 `attempt++`，新 worker 的 `计数` 归零也不会与旧 attempt 的 `run_id:attempt:计数` 碰撞——否则旧 attempt 的 `:0`/`:1` 会被新 attempt 当重复丢弃（runner §7.3）。**worker 在未发生 re-claim 的同 attempt 内重启**（如进程被 agentd 重拉但 claim 未变）必须沿用原 `attempt` 并继续计数，否则会产生撞键。
 
-批量参数（runner §7.2）：**250ms 或 2KB 先到者触发** ⚠️；单批上限 200 条 / 256KB，超出切多批顺序发送；单 run 内严格按 `client_event_id` 递增，批量不重排。
+批量参数（runner §7.2）：**100ms 或 2KB 先到者触发** ⚠️；单批上限 200 条 / 256KB，超出切多批顺序发送；单 run 内严格按 `client_event_id` 递增，批量不重排。
 
 响应 `200`：
 

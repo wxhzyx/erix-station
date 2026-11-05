@@ -193,3 +193,56 @@ describe('chat file drop', () => {
     expect(wrapper.get('[role=alert]').text()).toContain('不支持文件夹');
   });
 });
+
+it('renders upstream deltas before completion and removes transient bubbles after canonical reload',async()=>{
+ const {wrapper}=await setup();let finish!:(value:unknown)=>void;let emit!:(text:string)=>void;
+ mockApi.mockImplementation(async(path,opts,onDelta)=>{
+  if(path.endsWith('/messages')){emit=onDelta!;return new Promise(resolve=>{finish=resolve;});}
+  if(opts?.method==='POST')return {conversation:{id:'c1',title:'stream'}};
+  if(path.endsWith('/c1'))return {messages:[{id:'saved-user',role:'user',content:'你好'},{id:'saved-assistant',role:'assistant',content:'第一段第二段'}]};
+  return {conversations:[]};
+ });
+ await wrapper.get('textarea').setValue('你好');await wrapper.get('form').trigger('submit');await flushPromises();
+ emit('第一段');await vi.waitFor(()=>expect(wrapper.text()).toContain('第一段'));
+ expect(wrapper.text()).toContain('停止');expect(wrapper.findAll('article')).toHaveLength(2);
+ emit('第二段');await vi.waitFor(()=>expect(wrapper.text()).toContain('第一段第二段'));
+ finish({messages:[]});await flushPromises();expect(wrapper.findAll('article')).toHaveLength(2);expect(wrapper.text()).not.toContain('未完成');
+});
+it('keeps visible partial text and the draft after a failed stream, with the same retry identity',async()=>{
+ const {wrapper}=await setup();let attempts=0;
+ mockApi.mockImplementation(async(path,opts,onDelta)=>{
+  if(path.endsWith('/messages')){attempts++;onDelta?.('部分回复');throw new Error('连接中断');}
+  if(opts?.method==='POST')return {conversation:{id:'c1',title:'stream'}};
+  return {conversations:[],messages:[]};
+ });
+ await wrapper.get('textarea').setValue('问题');await wrapper.get('form').trigger('submit');await flushPromises();
+ expect(wrapper.text()).toContain('部分回复');expect(wrapper.text()).toContain('未完成');
+ expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('问题');
+ await wrapper.get('form').trigger('submit');await flushPromises();expect(attempts).toBe(2);expect(wrapper.findAll('article')).toHaveLength(2);
+});
+it.each(['stop', 'account'])('cancels streaming on %s and ignores obsolete updates', async change => {
+ const {wrapper,auth}=await setup();let emit!:(text:string)=>void;let signal!:AbortSignal;
+ mockApi.mockImplementation(async(path,opts,onDelta)=>{
+  if(path.endsWith('/messages')){emit=onDelta!;signal=opts!.signal!;return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));}
+  if(opts?.method==='POST')return {conversation:{id:'c1',title:'stream'}};
+  return {conversations:[],messages:[]};
+ });
+ await wrapper.get('textarea').setValue('问题');await wrapper.get('form').trigger('submit');await flushPromises();
+ emit('收到');await vi.waitFor(()=>expect(wrapper.text()).toContain('收到'));
+ if(change==='stop')await wrapper.findAll('button').find(b=>b.text()==='停止')!.trigger('click');
+ else auth.user={...user,id:'u2'};
+ await flushPromises();expect(signal.aborted).toBe(true);
+ if(change==='account'){emit('旧账号秘密');await flushPromises();expect(wrapper.text()).not.toContain('旧账号秘密');expect(wrapper.text()).not.toContain('收到');}
+ else {expect(wrapper.text()).toContain('未完成');expect(wrapper.text()).toContain('已停止');expect(wrapper.get('textarea').attributes('disabled')).toBeUndefined();}
+});
+it('keeps a committed answer when subsequent history refresh fails',async()=>{
+ const {wrapper}=await setup();
+ mockApi.mockImplementation(async(path,opts,onDelta)=>{
+  if(path.endsWith('/messages')){onDelta?.('完整回复');return {messages:[{id:'u',role:'user',content:'问题'},{id:'a',role:'assistant',content:'完整回复'}]};}
+  if(opts?.method==='POST')return {conversation:{id:'c1',title:'stream'}};
+  if(path.endsWith('/c1'))throw new Error('刷新失败');
+  return {conversations:[]};
+ });
+ await wrapper.get('textarea').setValue('问题');await wrapper.get('form').trigger('submit');await flushPromises();
+ expect(wrapper.text()).toContain('完整回复');expect(wrapper.text()).not.toContain('未完成');expect(wrapper.findAll('article')).toHaveLength(2);
+});

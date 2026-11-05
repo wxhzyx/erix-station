@@ -51,7 +51,29 @@ PNG/JPEG/WebP are supported (images require a vision model). Maximum 5 files,
 1 MiB each, 4 MiB combined. Encodings, file names, MIME types and image signatures
 are validated server-side. Each chat is bounded to 100 messages / 8 MiB prompt;
 start a new chat when the limit is reached. Chat response deadlines include body
-consumption. No streaming or tool calling is enabled in chat mode.
+consumption. Chat does not enable tool calling.
+
+### Streaming output (0.1.53)
+
+The chat message endpoint accepts `Accept: text/event-stream`. After ownership,
+input and model checks it sends `delta` events (`{text}`), followed by `done`
+with the committed `{messages}` result. Failures after headers use an `error`
+event; failures before headers retain the existing HTTP error envelope. Clients
+without this Accept header retain the JSON response. A replay emits only `done`.
+The upstream request uses `stream: true` and `stream_options.include_usage: true`
+through the same personal LiteLLM binding. The streaming deadline is 180 seconds.
+Closing the connection or pressing Stop aborts the upstream request. An unfinished
+turn is rolled back, while the browser retains its draft and labels partial output
+as incomplete. Already consumed model tokens remain subject to gateway accounting.
+Only a `done` event confirms persistence; retry IDs continue to prevent duplicates.
+
+Work keeps the existing runner delta/event/SSE path, with the agentd batching
+default reduced to 100 ms or 2 KiB, whichever comes first. `ERIX_BATCH_WINDOW_MS`
+still overrides this default. Both views smooth arriving bursts over at most
+120 ms and honor reduced-motion preferences. SSE disables proxy buffering and
+chat sends 15-second heartbeat comments. Deploy the portal, frontend and rebuilt
+runner image; existing worker containers need reconciliation to adopt the new
+batching default. No database or credential migration is required.
 
 Work supports multiple UTF-8 text/source attachments, up to 8 files, 64 KiB each,
 256 KiB combined. The server validates and embeds their contents into the

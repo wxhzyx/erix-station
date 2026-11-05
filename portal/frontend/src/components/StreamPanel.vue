@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import StreamingText from './StreamingText.vue';
 // 消息流（旧 #stream 的渲染语义平移）：addMessage 三分（user/assistant/synthetic）、
 // 助手终稿 markdown（v-html，渲染器本身先转义后格式化，XSS 安全）、工具卡片、
 // roundsep/syserr 分隔行、流式增量气泡。自动跟随/「↓ 最新」由父级持有（scroll 容器也在父级）。
@@ -364,7 +365,7 @@ function msgClass(en: Extract<StreamEntry, { kind: 'msg' }>): string {
         <span class="heartbeat inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brand" aria-hidden="true"></span>
         <span v-if="deltaElapsedText">{{ deltaElapsedText }}</span>
       </div>
-      <div v-html="renderMarkdown(en.text)"></div>
+      <StreamingText :text="en.text" active markdown />
     </div>
     <!-- issue #300：中止/失败 run 的**部分正文**（历史端点合成的 partial_output entry）。
          **中性助手气泡**：复用 .msg assistant .md（与助手终稿同一渲染路径），只加一个 `partial`

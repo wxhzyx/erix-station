@@ -116,3 +116,11 @@ test('follow-up uses persisted prior text and attachments, resolver reuses trans
 test('request UUID casing is normalized for PostgreSQL idempotency replay', () => {
   assert.equal(validateChatBody({ ...body(), request_id: 'ABCDEFAB-1111-1111-1111-111111111111' }).request_id, 'abcdefab-1111-1111-1111-111111111111');
 });
+
+test('streams only safe text before commit and rolls back a cancelled turn', async()=>{
+ const pool=fakePool();const seen=[];const controller=new AbortController();
+ await assert.rejects(sendChatMessage(pool,owner,id,body(),{signal:controller.signal,onDelta:text=>seen.push(text),resolveProvider:async()=>provider,
+  complete:async({stream,onDelta,signal})=>{assert.equal(stream,true);await onDelta('Live '+provider.api_key.slice(0,5));assert.deepEqual(seen,['Live ']);assert.equal(pool.rows().length,0);await onDelta(provider.api_key.slice(5));controller.abort();signal.throwIfAborted();}
+ }),{code:'llm_upstream_failed'});
+ assert.deepEqual(seen,['Live ','[redacted]']);assert.equal(pool.rows().length,0);assert.equal(pool.released(),1);
+});

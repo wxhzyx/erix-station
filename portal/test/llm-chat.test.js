@@ -313,9 +313,9 @@ test('收口证明：portal/src 里构造 chat/completions 的文件只有 llm-c
   assert.match(sessionsSrc, /from '\.\/llm-chat\.js'/, 'AI 改名改为消费统一 client');
 });
 
-test('llm-chat.js 零依赖：不 import 任何模块（更不 import erix-agent），也不引新依赖', () => {
+test('llm-chat.js 仅依赖本地流解析器，不引入外部依赖或引擎', () => {
   const src = fs.readFileSync(path.join(HERE, '../src/llm-chat.js'), 'utf8');
-  assert.equal(/^\s*import\s/m.test(src), false, '本文件必须保持零 import（含 erix-agent）');
+  assert.deepEqual([...src.matchAll(/from ['"]([^'"]+)['"]/g)].map(m => m[1]).filter(m => m !== './llm-chat.js'), ['./llm-stream.js']);
   assert.equal(/from\s+'erix-agent'/.test(src), false, '不许把引擎包拉进对话调用面（凭据纪律：真 key 在 runner 侧）');
   assert.equal(/require\s*\(/.test(src), false, '零依赖也适用于 CJS 形态');
 });
