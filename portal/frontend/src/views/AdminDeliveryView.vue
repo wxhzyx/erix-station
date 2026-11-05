@@ -13,6 +13,7 @@ type Request = {id:string;login:string;requested_limit:number;reason:string;stat
 const users=ref<User[]>([]), packages=ref<Package[]>([]), projects=ref<Project[]>([]), requests=ref<Request[]>([]);
 const userId=ref(''), packageId=ref(''), projectName=ref(''), instructions=ref(''), packageName=ref('');
 const archive=ref<File|null>(null), busy=ref(false), error=ref(''), message=ref('');
+const deliveryType=ref<'web'|'desktop'>('web'),buildDirectory=ref('.'),buildCommand=ref(''),buildOutput=ref('dist/test-build.zip');
 const quota=ref<Quota|null>(null), limit=ref(2000000);
 const collaborationEnabled=ref(false);
 const deleting=ref<Project|null>(null), confirmation=ref('');
@@ -41,7 +42,8 @@ async function action(fn:()=>Promise<void>) {
 onMounted(()=>action(load));
 async function upload() { await action(async()=>{
   if(!archive.value) throw new Error('请选择 ZIP 开发交付包');
-  const response=await fetch(`/api/admin/delivery-packages?name=${encodeURIComponent(packageName.value)}&filename=${encodeURIComponent(archive.value.name)}`,
+  const target=deliveryType.value==='web'?{type:'web'}:{type:'desktop',build:{directory:buildDirectory.value,command:buildCommand.value,output:buildOutput.value,timeout_seconds:1800}};
+  const response=await fetch(`/api/admin/delivery-packages?name=${encodeURIComponent(packageName.value)}&filename=${encodeURIComponent(archive.value.name)}&target=${encodeURIComponent(JSON.stringify(target))}`,
     {method:'POST',headers:{'Content-Type':'application/zip'},body:archive.value});
   const data=await response.json(); if(!response.ok) throw new Error(data.error?.message??'上传失败');
   packageId.value=data.id; message.value='交付包已保存'; await load();
@@ -66,6 +68,12 @@ async function review(id:string,approve:boolean) { await action(async()=>{
       <ElCard shadow="never"><template #header><h2>开发交付包</h2></template>
         <ElForm label-position="top" @submit.prevent="upload">
           <ElFormItem label="交付包名称"><ElInput v-model="packageName" required maxlength="150" placeholder="例如：设备看板开发规范" /></ElFormItem>
+          <ElFormItem label="交付类型"><ElSelect v-model="deliveryType" aria-label="交付类型"><ElOption value="web" label="网页版 · 在线预览"/><ElOption value="desktop" label="桌面版 · 下载程序"/></ElSelect></ElFormItem>
+          <template v-if="deliveryType==='desktop'">
+            <ElFormItem label="构建目录"><ElInput v-model="buildDirectory" aria-label="构建目录" placeholder="例如 Client/SdadsClient"/></ElFormItem>
+            <ElFormItem label="构建命令（Linux 工位）"><ElInput v-model="buildCommand" type="textarea" :rows="4" maxlength="4000" aria-label="构建命令"/></ElFormItem>
+            <ElFormItem label="产物文件（相对构建目录）"><ElInput v-model="buildOutput" aria-label="产物文件" placeholder="dist/test-build.zip"/></ElFormItem>
+          </template>
           <ElFormItem label="ZIP 文件 · 最大 50 MB"><ElUpload class="package-upload" drag :auto-upload="false" :limit="1" accept=".zip" :on-change="file => archive = file.raw ?? null" :on-remove="() => archive = null"><div class="el-upload__text">拖入交付包，或<em>点击选择</em></div></ElUpload></ElFormItem>
           <ElButton type="primary" native-type="submit" :loading="busy" :disabled="!archive || !packageName.trim()">上传交付包</ElButton>
         </ElForm>

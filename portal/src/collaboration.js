@@ -3,6 +3,7 @@ import { validateAssignment, deleteAssignment, lockMemberProjects } from './mana
 import { stopSession } from './sessions.js';
 import { failure, segment, branchFor, protectionRules, loadCollaborationConfig, gitea, personalIdentity, applyProtections, withStationAuthors } from './collaboration-gitea.js';
 import { initializeRepository, prepareWorkspace } from './collaboration-workspace.js';
+import { requestBuild, listBuilds, reconcileBuilds } from './project-builds.js';
 
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const requireId=id=>{if(!UUID.test(id??''))throw failure('not_found','项目或成员不存在',404);return id;};
@@ -25,7 +26,7 @@ async function members(db,id) {
     LEFT JOIN project_assignments a ON a.id=m.assignment_id WHERE m.project_id=$1 ORDER BY m.updated_at`,[id])).rows;
 }
 async function projectFor(db,id,user) {
-  const p=(await db.query(`SELECT p.*,u.login AS owner_login,u.display_name AS owner_name,d.name AS package_name
+  const p=(await db.query(`SELECT p.*,u.login AS owner_login,u.display_name AS owner_name,d.name AS package_name,d.delivery_target
     FROM collaboration_projects p JOIN users u ON u.id=p.owner_user_id JOIN delivery_packages d ON d.id=p.package_id WHERE p.id=$1`,[requireId(id)])).rows[0];
   if(!p)throw failure('not_found','项目不存在',404);
   const ms=await members(db,id),mine=ms.find(m=>m.user_id===user.id);
@@ -172,6 +173,7 @@ export function startCollaborationLoop(pool,config,{intervalMs=15000,log=console
   const tick=async()=>{
     if(stopped||!config.collaborationConfigFile)return;
     try {
+      await reconcileBuilds(pool);
       const rows=(await pool.query(`SELECT DISTINCT p.id FROM collaboration_projects p LEFT JOIN project_memberships m ON m.project_id=p.id
         JOIN users u ON u.id=m.user_id WHERE p.state<>'deleted' AND (p.state<>'active' OR m.state IN ('provisioning','failed','revoking') OR (u.status<>'active' AND m.state NOT IN ('revoked','declined'))) LIMIT 20`)).rows;
       for(const row of rows){if(stopped)break;await reconcileProject(pool,config,row.id);}
@@ -220,6 +222,11 @@ export async function collaborationApi(pool,config,user,{method,parts,body={}}) 
     const {p,ms,mine,manage}=await projectFor(db,id,user),action=parts[1],api=gitea(c),rp=repoPath(c,p);
     const requireManage=()=>{if(!manage)throw failure('forbidden','只有负责人和管理员可以管理成员',403);};
     const requireActive=()=>{if(p.state!=='active'||mine?.state!=='active')throw failure('project_not_ready','项目或成员尚未就绪');};
+    if(action==='builds' && parts.length===2) {
+      if(!manage)requireActive();
+      if(method==='GET')return listBuilds(db,id);
+      if(method==='POST')return requestBuild(db,{project:p,member:mine,user,api,repo:rp});
+    }
     if(method==='GET'&&!action) {
       const candidates=manage?(await db.query(`SELECT u.id,u.login,u.display_name FROM users u JOIN fde_git_accounts g ON g.fde_id=u.id
         JOIN git_hosts h ON h.id=g.git_host_id WHERE u.status='active' AND u.deleted_at IS NULL AND u.fde_name IS NOT NULL

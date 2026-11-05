@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { AdminError } from './admin.js';
 import { assertSafePath } from './fsutil.js';
 import { readDeliveryPackage } from './delivery-package.js';
+import { validateDeliveryTarget } from './delivery-target.js';
 import { validateFdeName } from './projects.js';
 
 const runFile = promisify(execFile);
@@ -19,18 +20,19 @@ export function validateAssignment(body) {
   return { ...body, instructions: body.instructions ?? '' };
 }
 
-export async function uploadPackage(pool, { actorId, name, filename, archive }) {
+export async function uploadPackage(pool, { actorId, name, filename, archive, deliveryTarget }) {
   if (typeof name !== 'string' || !name.trim() || name.length > 150) throw new AdminError('validation_failed', '交付包名称必填（最多 150 字符）');
   const files = await readDeliveryPackage(archive);
+  const target = validateDeliveryTarget(deliveryTarget);
   const id = crypto.randomUUID(); const sha = crypto.createHash('sha256').update(archive).digest('hex');
   const manifest = files.map(f => ({ name: f.name, size: f.data.length }));
-  await pool.query(`INSERT INTO delivery_packages(id,name,filename,sha256,archive,manifest,created_by)
-    VALUES($1,$2,$3,$4,$5,$6,$7)`, [id, name.trim(), String(filename ?? 'delivery.zip').slice(0,200), sha, archive, JSON.stringify(manifest), actorId]);
-  return { id, name: name.trim(), sha256: sha, manifest };
+  await pool.query(`INSERT INTO delivery_packages(id,name,filename,sha256,archive,manifest,created_by,delivery_target)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [id, name.trim(), String(filename ?? 'delivery.zip').slice(0,200), sha, archive, JSON.stringify(manifest), actorId, JSON.stringify(target)]);
+  return { id, name: name.trim(), sha256: sha, manifest, delivery_target: target };
 }
 
 export async function listPackages(pool) {
-  return (await pool.query(`SELECT id,name,filename,sha256,manifest,created_at FROM delivery_packages ORDER BY created_at DESC`)).rows;
+  return (await pool.query(`SELECT id,name,filename,sha256,manifest,delivery_target,created_at FROM delivery_packages ORDER BY created_at DESC`)).rows;
 }
 export async function listAssignments(pool, userId = null) {
   return (await pool.query(`SELECT a.id,a.user_id,a.package_id,a.name,a.instructions,a.status,a.repo_url,a.last_error,

@@ -20,6 +20,7 @@ import * as idempotency from './idempotency.js';
 import * as preview from './preview.js';
 import * as internal from './internal.js';
 import * as artifacts from './artifacts.js';
+import * as projectBuilds from './project-builds.js';
 import * as llm from './llm.js';
 import * as chatMode from './chat-mode.js';
 import { parseDocument } from './document-parser.js';
@@ -839,6 +840,17 @@ async function routeApi(req, res, ctx, url) {
     return;
   }
 
+  const buildDownload = pathname.match(/^\/api\/project-builds\/([a-f0-9-]+)\/download$/i);
+  if (buildDownload && req.method === 'GET') {
+    const session = await requireSession(req, ctx);
+    const {row,filePath} = await projectBuilds.downloadableBuild(pool,config,session.user,buildDownload[1]);
+    const stat = fs.statSync(filePath);
+    res.writeHead(200, {'Content-Type':'application/octet-stream','Content-Length':stat.size,
+      'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff',
+      'Content-Disposition':`attachment; filename="test-build${path.extname(row.artifact_name)}"; filename*=UTF-8''${encodeURIComponent(row.artifact_name)}`,
+      'X-Artifact-Sha256':row.artifact_sha256});
+    fs.createReadStream(filePath).on('error',()=>res.destroy()).pipe(res); return;
+  }
   if (pathname === '/api/collaboration' || pathname.startsWith('/api/collaboration/')) {
     const session = await requireSession(req, ctx);
     let body = {};
@@ -1215,8 +1227,12 @@ async function handleAdminApi(req, res, ctx, url) {
       if (size > MAX_PACKAGE_BYTES) throw new HttpError(413,'package_too_large','交付包不得超过 50 MB');
       chunks.push(chunk);
     }
+    let deliveryTarget;
+    try { deliveryTarget = url.searchParams.has('target') ? JSON.parse(url.searchParams.get('target')) : undefined; }
+    catch { throw new HttpError(400,'invalid_delivery_target','交付类型配置无效'); }
     return sendJson(res,201,await managedProjects.uploadPackage(ctx.pool, {
       actorId:session.user.id,name:url.searchParams.get('name'),filename:url.searchParams.get('filename'),archive:Buffer.concat(chunks),
+      deliveryTarget,
     }));
   }
   if (pathname === '/api/admin/assigned-projects') {
@@ -3326,6 +3342,19 @@ async function handleInternal(req, res, ctx, url) {
   const { pathname } = url;
   const identity = await internal.authenticateContainer(ctx.pool, bearerToken(req));
   const { container, user } = identity;
+
+  const buildRoute = pathname.match(/^\/api\/internal\/project-builds\/(claim|[a-f0-9-]+)(?:\/(source|status|artifact))?$/i);
+  if (buildRoute) {
+    const [,id,action] = buildRoute, lease = req.headers['x-build-lease'];
+    if (id==='claim' && !action && req.method==='POST') return sendJson(res,200,{job:await projectBuilds.claimBuild(ctx.pool,user.id)});
+    if (action==='source' && req.method==='GET') return sendJson(res,200,await projectBuilds.buildSource(ctx.pool,ctx.config,user.id,id,lease));
+    if (action==='status' && req.method==='POST') {
+      requireJson(req); const body = await readJsonBody(req,ctx.config.maxBodyBytes);
+      return sendJson(res,200,await projectBuilds.updateBuild(ctx.pool,user.id,id,lease,body));
+    }
+    if (action==='artifact' && req.method==='PUT') return sendJson(res,200,await projectBuilds.saveBuildArtifact(ctx.pool,ctx.config,user.id,id,lease,req));
+    throw new HttpError(405,'method_not_allowed','method not allowed');
+  }
 
   // SSE 下行通道（§9.12）
   if (pathname === '/api/internal/stream') {
