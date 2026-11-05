@@ -65,8 +65,8 @@ describe('SessionPickerModal（issue #94 评审裁决瘦身版）', () => {
     expect(dialog.exists()).toBe(true);
     expect(dialog.attributes('aria-modal')).toBe('true');
     expect(dialog.attributes('aria-label')).toBe('浏览会话');
-    expect(dialog.attributes('tabindex')).toBe('-1');
-    expect(document.activeElement).toBe(dialog.element);
+    expect(wrapper.get('ul[role=listbox]').attributes('tabindex')).toBe('0');
+    expect(dialog.element.contains(document.activeElement)).toBe(true);
     wrapper.unmount();
   });
 
@@ -76,8 +76,7 @@ describe('SessionPickerModal（issue #94 评审裁决瘦身版）', () => {
     trigger.focus();
     const wrapper = mountModal();
     await tick();
-    const dialog = wrapper.find('[role="dialog"]');
-    expect(dialog.classes().join(' ')).toContain('max-md:rounded-t-lg');
+    expect(wrapper.get('.el-dialog').attributes('style')).toContain('94vw');
     expect(document.body.style.overflow).toBe('hidden');
     wrapper.unmount();
     expect(document.body.style.overflow).toBe('');
@@ -194,17 +193,9 @@ describe('SessionPickerModal · 条目行样式（issue #112）', () => {
     await tick();
     const rows = wrapper.findAll('li[role="option"]');
     const first = rows[0];
-    expect(first.classes()).toContain('min-h-[54px]');
-    expect(first.classes()).toContain('pl-3.5'); // 左 14px（与侧栏同行样式）
-    expect(first.classes()).toContain('pr-2'); // 右 8px
-    expect(first.classes()).toContain('border-l-2');
-    expect(first.classes()).toContain('border-l-brand'); // 高亮行左竖条
-    expect(first.classes()).toContain('bg-green-50');
-    expect(first.classes()).not.toContain('border'); // 卡片边框已拆除
-    expect(first.classes()).not.toContain('rounded-md');
-    expect(first.classes()).not.toContain('mt-1'); // 扁平行之间无间距
-    expect(rows[1].classes()).toContain('border-l-transparent');
-    expect(rows[1].classes()).toContain('hover:bg-black/5');
+    expect(first.classes()).toContain('active');
+    expect(rows[1].classes()).not.toContain('active');
+    expect(first.attributes('aria-selected')).toBe('true');
     wrapper.unmount();
   });
 
@@ -212,10 +203,8 @@ describe('SessionPickerModal · 条目行样式（issue #112）', () => {
     const wrapper = mountModal({ scope: 'all' });
     await tick();
     const first = wrapper.get('li[role="option"]');
-    expect(first.get('span.truncate').element.parentElement!.classList).toContain('text-[12px]');
-    const meta = first.get('div[class~="mt-0.5"]');
-    expect(meta.classes()).toContain('text-[11px]');
-    expect(meta.classes()).toContain('text-black/50');
+    expect(first.get('strong').text()).toBe('部署脚本');
+    expect(first.get('p').text()).toContain('demo');
     wrapper.unmount();
   });
 
@@ -224,7 +213,7 @@ describe('SessionPickerModal · 条目行样式（issue #112）', () => {
     const wrapper = mountModal();
     await tick();
     const empty = wrapper.findAll('p').find((p) => p.text() === '该范围暂无会话')!;
-    expect(empty.classes()).toContain('text-[11px]');
+    expect(empty.element.closest('.el-empty')).not.toBeNull();
     wrapper.unmount();
   });
 });

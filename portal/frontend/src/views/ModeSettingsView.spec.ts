@@ -1,3 +1,4 @@
+import { ElSelect, ElRadioGroup } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
@@ -16,9 +17,9 @@ afterEach(() => wrapper?.unmount());
 async function setup(role='admin') { const pinia=createPinia(); setActivePinia(pinia); const auth=useAuthStore(); auth.user={id:'u1',login:'a',display_name:null,role,fde_name:'a',auth_source:'local'}; wrapper=mount(ModeSettingsView,{global:{plugins:[pinia,i18n],stubs:{RouterLink:{template:'<a><slot /></a>'}}}}); await flushPromises(); return auth; }
 describe('administrator model assignments', () => {
   it('selects a member and saves only their development model without keys', async () => {
-    await setup(); await wrapper.findAll('select')[0]!.setValue('u2'); await flushPromises();
-    await wrapper.findAll('button').find(b=>b.text()==='开发模型')!.trigger('click');
-    const selects=wrapper.findAll('select'); expect((selects[2]!.element as HTMLSelectElement).value).toBe('m2'); expect(selects[2]!.text()).not.toContain('chat-model');
+    await setup(); wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue','u2'); await flushPromises(); wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('change','u2'); await flushPromises();
+    wrapper.getComponent(ElRadioGroup).vm.$emit('update:modelValue','work'); await flushPromises();
+    const selects=wrapper.findAllComponents(ElSelect); expect(selects[2]!.props('modelValue')).toBe('m2'); expect(selects[2]!.text()).not.toContain('chat-model');
     mockApi.mockResolvedValueOnce({provider_id:'p1',main:{model_id:'m2'}});
     await wrapper.get('form').trigger('submit'); await flushPromises();
     const [path,opts]=mockApi.mock.calls.at(-1)!; expect(path).toBe('/api/admin/users/u2/mode-settings/work');
@@ -30,7 +31,7 @@ describe('administrator model assignments', () => {
   });
   it('clears previous account and ignores obsolete responses after privilege changes',async()=>{
     const auth=await setup(); let resolve:(value:unknown)=>void=()=>{};
-    mockApi.mockImplementationOnce(()=>new Promise(r=>{resolve=r;})); await wrapper.findAll('select')[0]!.setValue('u2'); await flushPromises(); expect(wrapper.text()).not.toContain('API One');
+    mockApi.mockImplementationOnce(()=>new Promise(r=>{resolve=r;})); wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue','u2'); await flushPromises(); wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('change','u2'); await flushPromises(); expect(wrapper.text()).not.toContain('API One');
     auth.user={...auth.user!,id:'u3',role:'fde'}; await flushPromises(); resolve(settings); await flushPromises(); expect(wrapper.find('form').exists()).toBe(false); expect(wrapper.text()).not.toContain('API One');
   });
   it('disables saving when loading fails',async()=>{

@@ -1,25 +1,40 @@
 <script setup lang="ts">
-import StreamingText from './StreamingText.vue';
+import { ElButton, ElIcon } from "element-plus";
+import { MagicStick } from "@element-plus/icons-vue";
+import StreamingText from "./StreamingText.vue";
 // 消息流（旧 #stream 的渲染语义平移）：addMessage 三分（user/assistant/synthetic）、
 // 助手终稿 markdown（v-html，渲染器本身先转义后格式化，XSS 安全）、工具卡片、
 // roundsep/syserr 分隔行、流式增量气泡。自动跟随/「↓ 最新」由父级持有（scroll 容器也在父级）。
-import { computed, reactive, watch } from 'vue';
-import { useI18n } from 'vue-i18n';
-import { useWorkbenchStore, type StreamEntry, type FoldedInfo, type FoldedOriginalState } from '../stores/workbench';
-import type { ToolCardState } from '../composables/useEventStream';
+import { computed, reactive, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import {
+  useWorkbenchStore,
+  type StreamEntry,
+  type FoldedInfo,
+  type FoldedOriginalState,
+} from "../stores/workbench";
+import type { ToolCardState } from "../composables/useEventStream";
 // issue #85：卡片折叠（默认收起）+ 单行摘要防溢出，方案对齐 pi web ToolCallBlock。
-import { getToolPreview, getToolResultSummary, formatDuration, isSpecialExecutionStatus } from '../lib/toolSummary';
-import { isToolCallExpanded, setToolCallExpanded } from '../lib/toolCallExpansion';
+import {
+  getToolPreview,
+  getToolResultSummary,
+  formatDuration,
+  isSpecialExecutionStatus,
+} from "../lib/toolSummary";
+import {
+  isToolCallExpanded,
+  setToolCallExpanded,
+} from "../lib/toolCallExpansion";
 // pi-web 风格：流式增量也走 markdown 渲染（渲染器先转义后格式化，半截 ``` 容错收尾）。
-import { renderMarkdown } from '../lib/markdown';
+import { renderMarkdown } from "../lib/markdown";
 // mermaid 图渲染（参考 pi-web MermaidBlock）：v-html 落定后对 ```mermaid 块做 DOM 后处理。
 // 只挂**终稿/部分正文**容器；流式增量不挂（pi-web 同口径：流式中不预览，防逐 chunk 重渲）。
-import { vMermaid } from '../directives/mermaid';
+import { vMermaid } from "../directives/mermaid";
 // issue #282：消息级时刻（A 块）+ 流式气泡上的「已运行 Xs」心跳（B 块在 StreamPanel 的唯一落点；
 // 其余动量数字都在输入框上方常驻状态条 RunStatusBar 里，见工单「落点」）。
-import { formatMessageTime } from '../lib/messageTime';
-import { formatElapsed } from '../lib/runMomentum';
-import { useRunMomentum } from '../composables/useRunMomentum';
+import { formatMessageTime } from "../lib/messageTime";
+import { formatElapsed } from "../lib/runMomentum";
+import { useRunMomentum } from "../composables/useRunMomentum";
 
 const { t, locale } = useI18n();
 const store = useWorkbenchStore();
@@ -31,7 +46,7 @@ const { view: momentumView } = useRunMomentum(store.momentum);
  * issue #282 A：消息时刻文本。`created_at` 缺失/脏值 ⇒ `''`（模板 `v-if` 整段不出），
  * 绝不把 `undefined` / `Invalid Date` / `NaN` 渲染上屏（格式化规则见 `lib/messageTime.ts`）。
  */
-function msgTime(en: Extract<StreamEntry, { kind: 'msg' }>): string {
+function msgTime(en: Extract<StreamEntry, { kind: "msg" }>): string {
   return formatMessageTime(en.createdAt, locale.value);
 }
 
@@ -41,9 +56,11 @@ function msgTime(en: Extract<StreamEntry, { kind: 'msg' }>): string {
  */
 const deltaElapsedText = computed(() => {
   const view = momentumView.value;
-  if (!view.running) return '';
+  if (!view.running) return "";
   const dur = formatElapsed(view.elapsedMs);
-  return dur === '' ? t('runStatus.running') : t('runStatus.runningElapsed', { dur });
+  return dur === ""
+    ? t("runStatus.running")
+    : t("runStatus.runningElapsed", { dur });
 });
 
 // 展开态：组件内 reactive Set 驱动重渲染，模块级 Set（toolCallExpansion）做跨重渲染记忆，
@@ -54,7 +71,11 @@ watch(
   () => store.entries,
   () => {
     for (const en of store.entries) {
-      if (en.kind === 'tool' && isToolCallExpanded(en.callId) && !expandedIds.has(en.callId)) {
+      if (
+        en.kind === "tool" &&
+        isToolCallExpanded(en.callId) &&
+        !expandedIds.has(en.callId)
+      ) {
         expandedIds.add(en.callId);
       }
     }
@@ -75,23 +96,27 @@ function toggleCard(callId: string): void {
 
 // 单行摘要：优先 args 里的语义键（command/path/...），解析失败回退 dig（§旧 toolCard 原样）。
 function summaryText(card: ToolCardState): string {
-  return getToolPreview(card.args) || card.dig || (card.args ? '' : t('stream.argsPending'));
+  return (
+    getToolPreview(card.args) ||
+    card.dig ||
+    (card.args ? "" : t("stream.argsPending"))
+  );
 }
 
 // 折叠态状态位：✓/✗（出错变红）+ 耗时；尚无结果（null）显示 …。
 // issue #283：耗时走 `formatDuration` 三档可读单位（不再裸拼 `${card.dur}ms`）；
 // **没有时长就只出 ✓/✗**（旧实现在 `dur=0` 上伪装不了「引擎未给」，那个伪装在上游已拆）。
 function statusMark(card: ToolCardState): string {
-  const dur = card.dur != null ? formatDuration(card.dur) : '';
-  if (card.ok === true) return '✓' + (dur ? ` ${dur}` : '');
-  if (card.ok === false) return '✗' + (dur ? ` ${dur}` : '');
-  return '…';
+  const dur = card.dur != null ? formatDuration(card.dur) : "";
+  if (card.ok === true) return "✓" + (dur ? ` ${dur}` : "");
+  if (card.ok === false) return "✗" + (dur ? ` ${dur}` : "");
+  return "…";
 }
 
 // issue #188：展开区取数——事件流卡片有完整 args/out；投影卡片（加载/刷新路径）只有上游摘要/预览
 // （argsSummary 120 字 / resultPreview 400 字，全文在 DTO blocks，不在此重建）。
 function cardArgs(card: ToolCardState): string {
-  return card.args || card.argsSummary || '';
+  return card.args || card.argsSummary || "";
 }
 
 function cardOut(card: ToolCardState): string {
@@ -101,8 +126,12 @@ function cardOut(card: ToolCardState): string {
   // 也不会因 `!!0` 把「写了 0 字节」当成「没结果」而丢掉。metadata 不单独上 UI（信息在 content marker 里）。
   // issue #299（guide-0.20.0 §7）：`executionStatus` 只在两种特殊状态下存在，普通块上缺席；这里**拿值比**
   // （`isSpecialExecutionStatus`）而不是看「在不在」：上游若哪天多写一个普通值，不会被我们当成状态渲进展开区。
-  return [isSpecialExecutionStatus(card.executionStatus) ? card.executionStatus : '',
-    getToolResultSummary(card.resultPreview)].filter((part) => !!part).join(' · ');
+  return [
+    isSpecialExecutionStatus(card.executionStatus) ? card.executionStatus : "",
+    getToolResultSummary(card.resultPreview),
+  ]
+    .filter((part) => !!part)
+    .join(" · ");
 }
 
 // issue #188：推理块展开态（组件内，默认收起）——与工具卡片同一按钮+chevron 交互风格，不新造一套。
@@ -120,11 +149,11 @@ function toggleReasoning(id: string): void {
 
 // 收起时的单行摘要：取推理文本首行截 120 字（与卡片摘要同口径，防溢出）。
 function reasoningSummary(text: string): string {
-  return text.split('\n')[0].slice(0, 120);
+  return text.split("\n")[0].slice(0, 120);
 }
 
 // issue #189：折叠横幅展开态（组件内，默认收起），与推理块同一交互风格。
-type FoldedEntry = Extract<StreamEntry, { kind: 'folded' }>;
+type FoldedEntry = Extract<StreamEntry, { kind: "folded" }>;
 
 const expandedFolded = reactive(new Set<string>());
 
@@ -182,7 +211,8 @@ function foldedHasReadableSummary(en: FoldedEntry): boolean {
  *      这件事又塞回宿主）。
  */
 function foldedSummaryBody(en: FoldedEntry): string {
-  if (en.folded.summarySource === 'llm' && en.folded.summaryText !== undefined) return en.folded.summaryText;
+  if (en.folded.summarySource === "llm" && en.folded.summaryText !== undefined)
+    return en.folded.summaryText;
   return en.folded.text;
 }
 
@@ -207,9 +237,10 @@ function foldedTitle(folded: FoldedInfo): string {
   const range = folded.foldedRoundRange;
   const from = range?.from;
   const to = range?.to;
-  if (typeof from === 'number' && typeof to === 'number') return t('stream.folded.range', { from, to });
-  if (typeof count === 'number') return t('stream.folded.countOnly', { count });
-  return t('stream.folded.bare');
+  if (typeof from === "number" && typeof to === "number")
+    return t("stream.folded.range", { from, to });
+  if (typeof count === "number") return t("stream.folded.countOnly", { count });
+  return t("stream.folded.bare");
 }
 
 // 「查看原文」端点 `GET /api/sessions/:id/folded/:round` 的 :round 是**折叠行自己的 round**
@@ -238,27 +269,44 @@ function foldedTitle(folded: FoldedInfo): string {
  * 轮数只在有 `foldedRoundRange` 时报——拿 `foldedPayloadMessages` 报轮数是 #375 定过性的假话。
  */
 function foldedVisibilityNotice(en: FoldedEntry): string | null {
-  const range = (en.folded as { foldedRoundRange?: { from?: unknown; to?: unknown } }).foldedRoundRange;
+  const range = (
+    en.folded as { foldedRoundRange?: { from?: unknown; to?: unknown } }
+  ).foldedRoundRange;
   const from = range?.from;
   const to = range?.to;
-  const n = typeof from === 'number' && typeof to === 'number' && to >= from ? to - from + 1 : null;
+  const n =
+    typeof from === "number" && typeof to === "number" && to >= from
+      ? to - from + 1
+      : null;
   // #440：**三态**里的前两态——账本 `foldedFacts` 说了这次折叠留下了什么。
   // `summarySource` 只由后端白名单给出（`'llm' | 'statistical'`），不认识的形态整个键缺席。
   const source = en.folded.summarySource;
-  if (source === 'llm' || source === 'statistical') {
-    const key = source === 'llm'
-      ? (n === null ? 'stream.folded.visibilityLlmBare' : 'stream.folded.visibilityLlm')
-      : (n === null ? 'stream.folded.visibilityMechanicalBare' : 'stream.folded.visibilityMechanical');
+  if (source === "llm" || source === "statistical") {
+    const key =
+      source === "llm"
+        ? n === null
+          ? "stream.folded.visibilityLlmBare"
+          : "stream.folded.visibilityLlm"
+        : n === null
+          ? "stream.folded.visibilityMechanicalBare"
+          : "stream.folded.visibilityMechanical";
     const line = n === null ? t(key) : t(key, { n });
     // 「摘要被夹断」标记（账本 `truncated:true` = 语义摘要被 2048 B 上界削过尾）——
     // 不新开面板，就挂在同一行末尾（工单：零新增 UI 结构）。
-    return en.folded.truncated === true ? `${line}${t('stream.folded.summaryTruncated')}` : line;
+    return en.folded.truncated === true
+      ? `${line}${t("stream.folded.summaryTruncated")}`
+      : line;
   }
   // 第三态（#390-A 原样）：账本没有可读替代物（旧账本 / 机械路径缺席）⇒ 与 #440 之前逐字一致。
   const has = (en.folded as { hasSummary?: unknown }).hasSummary;
   if (has !== true && has !== false) return null;
-  if (n === null) return has ? t('stream.folded.visibilityBare') : t('stream.folded.visibilityNoSummaryBare');
-  return has ? t('stream.folded.visibility', { n }) : t('stream.folded.visibilityNoSummary', { n });
+  if (n === null)
+    return has
+      ? t("stream.folded.visibilityBare")
+      : t("stream.folded.visibilityNoSummaryBare");
+  return has
+    ? t("stream.folded.visibility", { n })
+    : t("stream.folded.visibilityNoSummary", { n });
 }
 
 function foldedQueryRound(folded: FoldedInfo): number | null {
@@ -291,26 +339,33 @@ function foldedOriginalState(en: FoldedEntry): FoldedOriginalState | undefined {
 // 与助手终稿/流式增量一致。text 在 store 里已保证是字符串（脏载荷退化成 '' 后根本不推 entry），
 // 这里再兜一层是为了组件对 entry 形状独立可推：不依赖调用方洁净，也不渲染 undefined。
 function partialHtml(text: string): string {
-  return renderMarkdown(typeof text === 'string' ? text : '');
+  return renderMarkdown(typeof text === "string" ? text : "");
 }
 
 function entryKey(en: StreamEntry, i: number): string {
   switch (en.kind) {
-    case 'msg': return 'm' + en.id;
-    case 'folded': return 'f' + en.id;
-    case 'partial': return 'p' + en.id;
-    case 'tool': return 't' + en.callId;
-    case 'reasoning': return 'r' + en.id;
-    case 'delta': return 'd' + i;
-    default: return 's' + i;
+    case "msg":
+      return "m" + en.id;
+    case "folded":
+      return "f" + en.id;
+    case "partial":
+      return "p" + en.id;
+    case "tool":
+      return "t" + en.callId;
+    case "reasoning":
+      return "r" + en.id;
+    case "delta":
+      return "d" + i;
+    default:
+      return "s" + i;
   }
 }
 
-function msgClass(en: Extract<StreamEntry, { kind: 'msg' }>): string {
+function msgClass(en: Extract<StreamEntry, { kind: "msg" }>): string {
   // 旧 div.className = `msg ${m.role}${m.synthetic ? ' synthetic' : ''}`（+ .md 仅助手终稿）
-  let cls = 'msg ' + en.role;
-  if (en.synthetic) cls += ' synthetic';
-  if (en.html) cls += ' md';
+  let cls = "msg " + en.role;
+  if (en.synthetic) cls += " synthetic";
+  if (en.html) cls += " md";
   return cls;
 }
 </script>
@@ -319,25 +374,56 @@ function msgClass(en: Extract<StreamEntry, { kind: 'msg' }>): string {
   <!-- 试用台账 #10：「加载更早消息」入口。后端 keyset 分页一直在 work（默认只给最新一窗），
        此前前端从不消费 next_cursor ⇒ 长会话滚到顶就从压缩横幅开始，最早的对话「看起来消失」
        （其实都在库里，不是压缩删的）。游标 null（已到底/旧后端）则不渲染；失败不推进游标，可重试。 -->
-  <p v-if="store.olderMessagesCursor != null" class="load-older mb-2 text-center">
-    <button
-      type="button"
+  <p
+    v-if="store.olderMessagesCursor != null"
+    class="load-older mb-2 text-center"
+  >
+    <ElButton
+      native-type="button"
       class="rounded-md border border-black/20 px-2.5 py-1 text-xs text-black/60 hover:bg-black/5 disabled:opacity-50"
       :disabled="store.olderLoading"
       data-test="load-older"
       @click="store.loadOlderMessages()"
-    >{{ store.olderLoading ? t('stream.loadOlderLoading') : t('stream.loadOlder') }}</button>
+      >{{
+        store.olderLoading
+          ? t("stream.loadOlderLoading")
+          : t("stream.loadOlder")
+      }}</ElButton
+    >
   </p>
   <!-- issue #189（追加）：当前会话头部状态行「N 条消息 · 已压缩 M 次」（M=0 降级只显示条数；无选中会话不渲染）
        + 仅 M≥1 时一句克制提示（无弹窗/动画） -->
-  <p v-if="store.sessionStats && store.sessionStats.messages > 0" class="session-stats mb-2 text-xs text-black/40">
-    {{ t('stream.sessionStats', { count: store.sessionStats.messages }) }}<template v-if="store.sessionStats.folded > 0"> · {{ t('stream.sessionStatsCompacted', { count: store.sessionStats.folded }) }}</template>
-    <span v-if="store.sessionStats.folded >= 1" class="session-compaction-hint block">{{ t('stream.sessionCompactionHint') }}</span>
+  <p
+    v-if="store.sessionStats && store.sessionStats.messages > 0"
+    class="session-stats mb-2 text-xs text-black/40"
+  >
+    {{ t("stream.sessionStats", { count: store.sessionStats.messages })
+    }}<template v-if="store.sessionStats.folded > 0">
+      ·
+      {{
+        t("stream.sessionStatsCompacted", { count: store.sessionStats.folded })
+      }}</template
+    >
+    <span
+      v-if="store.sessionStats.folded >= 1"
+      class="session-compaction-hint block"
+      >{{ t("stream.sessionCompactionHint") }}</span
+    >
   </p>
   <!-- 空态：旧版「选择或新建会话」默认文案（issue #332：曾按 `noDir && isPlatformAdmin` 分叉去
        引导「进管理台」，入口拦截后该形状不可达 ⇒ 分支已删，只剩这一条） -->
-  <div v-if="store.entries.length === 0" class="work-empty">
-    <p class="muted">{{ t('stream.chooseOrNewSession') }}</p>
+  <div v-if="store.entries.length === 0" class="stream-welcome">
+    <div class="stream-welcome-mark">
+      <ElIcon><MagicStick /></ElIcon>
+    </div>
+    <h2>
+      {{
+        locale === "en"
+          ? "A space to build something great"
+          : "让想法，从这里开始实现"
+      }}
+    </h2>
+    <p>{{ t("stream.chooseOrNewSession") }}</p>
   </div>
 
   <template v-for="(en, i) in store.entries" :key="entryKey(en, i)">
@@ -349,7 +435,8 @@ function msgClass(en: Extract<StreamEntry, { kind: 'msg' }>): string {
         class="msg-time block text-right text-[11px] leading-none text-black/35"
         :datetime="en.createdAt"
         :title="t('runStatus.messageTimeTitle')"
-      >{{ msgTime(en) }}</time>
+        >{{ msgTime(en) }}</time
+      >
       <div v-if="en.html" v-mermaid v-html="en.html"></div>
       <template v-else>{{ en.text }}</template>
     </div>
@@ -362,7 +449,10 @@ function msgClass(en: Extract<StreamEntry, { kind: 'msg' }>): string {
         class="delta-meta mb-0.5 flex items-center gap-1.5 text-[11px] leading-none text-black/40"
         :title="t('runStatus.runningHint')"
       >
-        <span class="heartbeat inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brand" aria-hidden="true"></span>
+        <span
+          class="heartbeat inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brand"
+          aria-hidden="true"
+        ></span>
         <span v-if="deltaElapsedText">{{ deltaElapsedText }}</span>
       </div>
       <StreamingText :text="en.text" active markdown />
@@ -371,9 +461,16 @@ function msgClass(en: Extract<StreamEntry, { kind: 'msg' }>): string {
          **中性助手气泡**：复用 .msg assistant .md（与助手终稿同一渲染路径），只加一个 `partial`
          修饰类做视觉区分——**不新增颜色语义**，更不进红色 .syserr（半截正文不是错误）。 -->
     <div v-else-if="en.kind === 'partial'" class="msg assistant md partial">
-      <div class="partial-label mb-0.5 text-xs text-black/45">{{ t('stream.partialOutput.label') }}</div>
+      <div class="partial-label mb-0.5 text-xs text-black/45">
+        {{ t("stream.partialOutput.label") }}
+      </div>
       <div v-mermaid v-html="partialHtml(en.text)"></div>
-      <div v-if="en.truncated" class="partial-truncated mt-0.5 text-xs text-black/45">{{ t('stream.partialOutput.truncated') }}</div>
+      <div
+        v-if="en.truncated"
+        class="partial-truncated mt-0.5 text-xs text-black/45"
+      >
+        {{ t("stream.partialOutput.truncated") }}
+      </div>
     </div>
     <!-- issue #189：折叠横幅（**独立视觉**：非 .msg 气泡，琥珀色左边框 + 虚线分隔条，绑定助手消息 id，
          排在正文气泡前）。标题带压缩条数/轮范围（缺字段逐级降级）；摘要默认收起，点击展开；
@@ -383,24 +480,32 @@ function msgClass(en: Extract<StreamEntry, { kind: 'msg' }>): string {
       class="folded-banner my-1.5 max-w-[46rem] rounded-md border border-dashed border-black/20 border-l-4 border-l-amber-500 bg-amber-50/60 px-3 py-1.5 text-sm"
     >
       <!-- issue #390：hasSummary=false ⇒ 无▾、无摘要区（标题降为普通行）；键缺席照旧画▾可展开。 -->
-      <button
+      <ElButton
         v-if="foldedHasReadableSummary(en)"
-        type="button"
+        native-type="button"
         class="folded-toggle flex w-full min-w-0 items-center gap-2 text-left"
         :aria-expanded="isFoldedExpanded(en.id)"
         @click="toggleFolded(en.id)"
       >
-        <span class="shrink-0 font-semibold text-black/60">🗜 {{ foldedTitle(en.folded) }}</span>
+        <span class="shrink-0 font-semibold text-black/60"
+          >🗜 {{ foldedTitle(en.folded) }}</span
+        >
         <span
           class="shrink-0 text-black/50 transition-transform duration-150"
           :class="{ 'rotate-180': isFoldedExpanded(en.id) }"
-        >▾</span>
-      </button>
+          >▾</span
+        >
+      </ElButton>
       <div v-else class="folded-title flex w-full min-w-0 items-center gap-2">
-        <span class="shrink-0 font-semibold text-black/60">🗜 {{ foldedTitle(en.folded) }}</span>
+        <span class="shrink-0 font-semibold text-black/60"
+          >🗜 {{ foldedTitle(en.folded) }}</span
+        >
       </div>
       <!-- D 片（#392）：可见性说明（两态；hasSummary 键缺席则整行不出）。 -->
-      <p v-if="foldedVisibilityNotice(en)" class="folded-visibility mt-0.5 text-xs text-black/45">
+      <p
+        v-if="foldedVisibilityNotice(en)"
+        class="folded-visibility mt-0.5 text-xs text-black/45"
+      >
         {{ foldedVisibilityNotice(en) }}
       </p>
       <!-- 摘要：默认收起；展开后走 markdown（#389：与助手气泡同一渲染路径/样式——先转义后格式化，
@@ -411,31 +516,56 @@ function msgClass(en: Extract<StreamEntry, { kind: 'msg' }>): string {
         v-html="renderMarkdown(foldedSummaryBody(en))"
       ></div>
       <!-- 查看原文（轮号可推导才展示；只读懒加载，按 (会话,轮) 缓存） -->
-      <div v-if="en.sessionId != null && foldedQueryRound(en.folded) != null" class="mt-1 flex items-center gap-2">
-        <button
-          type="button"
+      <div
+        v-if="en.sessionId != null && foldedQueryRound(en.folded) != null"
+        class="mt-1 flex items-center gap-2"
+      >
+        <ElButton
+          native-type="button"
           class="view-original rounded-md border border-black/20 px-2 py-0.5 text-xs hover:bg-black/5"
           @click="loadOriginal(en)"
-        >{{ t('stream.folded.viewOriginal') }}</button>
+          >{{ t("stream.folded.viewOriginal") }}</ElButton
+        >
       </div>
       <!-- 原文块（#388）：可见性归 foldedOriginalVisible 管——标题收起时跟着收起，本地「收起原文」时隐藏（不清缓存）。 -->
       <div v-if="foldedOriginalVisible(en)" class="folded-original mt-1">
         <!-- #388：原文块自己的收起入口——只隐藏，**不清缓存**（再展开命中缓存，不重发）。 -->
         <div class="flex justify-end">
-          <button
-            type="button"
+          <ElButton
+            native-type="button"
             class="folded-original-collapse rounded-md border border-black/20 px-2 py-0.5 text-xs text-black/50 hover:bg-black/5"
             @click="collapseOriginal(en.id)"
-          >{{ t('stream.folded.collapseOriginal') }}</button>
+            >{{ t("stream.folded.collapseOriginal") }}</ElButton
+          >
         </div>
-        <div v-if="foldedOriginalState(en)!.status === 'loading'" class="text-xs text-black/40">{{ t('common.loading') }}</div>
-        <div v-else-if="foldedOriginalState(en)!.status === 'missing'" class="folded-original-missing text-xs text-black/40">{{ t('stream.folded.originalMissing') }}</div>
+        <div
+          v-if="foldedOriginalState(en)!.status === 'loading'"
+          class="text-xs text-black/40"
+        >
+          {{ t("common.loading") }}
+        </div>
+        <div
+          v-else-if="foldedOriginalState(en)!.status === 'missing'"
+          class="folded-original-missing text-xs text-black/40"
+        >
+          {{ t("stream.folded.originalMissing") }}
+        </div>
         <template v-else-if="foldedOriginalState(en)!.status === 'loaded'">
           <!-- #375：归档只是本轮差分且被上游夹断时，要说清「下面的正文是从账本按轮号补齐的」 -->
           <div
-            v-if="(foldedOriginalState(en) as { truncated?: boolean }).truncated"
+            v-if="
+              (foldedOriginalState(en) as { truncated?: boolean }).truncated
+            "
             class="folded-original-truncated text-xs text-black/40"
-          >{{ t('stream.folded.originalTruncated', { count: (foldedOriginalState(en) as { droppedMessages?: number }).droppedMessages ?? '?' }) }}</div>
+          >
+            {{
+              t("stream.folded.originalTruncated", {
+                count:
+                  (foldedOriginalState(en) as { droppedMessages?: number })
+                    .droppedMessages ?? "?",
+              })
+            }}
+          </div>
           <!--
             原文渲染口径（#384，真机验出来的一条「假占位」）：
             账本里的 turn 有四类内容——`text` / `reasoning` / `toolCalls[]`（+ user 身份）。旧实现只画 `text`，
@@ -444,90 +574,193 @@ function msgClass(en: Extract<StreamEntry, { kind: 'msg' }>): string {
             现在：四类都画；只有四类**都空**才给占位（占位的语义收窄成「这一条真的什么都没有」）。
           -->
           <div
-            v-for="(turn, ti) in (foldedOriginalState(en) as { status: 'loaded'; turns: Array<{ role?: string; text?: string; reasoning?: string; toolCalls?: Array<{ name?: string; argsSummary?: string; isError?: boolean }> }> }).turns"
+            v-for="(turn, ti) in (
+              foldedOriginalState(en) as {
+                status: 'loaded';
+                turns: Array<{
+                  role?: string;
+                  text?: string;
+                  reasoning?: string;
+                  toolCalls?: Array<{
+                    name?: string;
+                    argsSummary?: string;
+                    isError?: boolean;
+                  }>;
+                }>;
+              }
+            ).turns"
             :key="ti"
             class="folded-original-turn"
           >
-            <div v-if="turn.role === 'user'" class="folded-original-role text-xs text-black/35">{{ t('stream.folded.originalRoleUser') }}</div>
+            <div
+              v-if="turn.role === 'user'"
+              class="folded-original-role text-xs text-black/35"
+            >
+              {{ t("stream.folded.originalRoleUser") }}
+            </div>
             <!-- #389：正文走 markdown（与助手气泡同一路径/样式）；reasoning 与工具行**刻意保持纯文本**
                  （模型独白/命令行里 `*` `_` 反引号遍地，格式化会出错），绝不 v-html。 -->
-            <div v-if="turn.reasoning" class="folded-original-reasoning overflow-auto whitespace-pre-wrap break-all text-black/40 italic">{{ turn.reasoning }}</div>
-            <div v-if="turn.text" class="folded-original-text md overflow-auto text-black/70" v-html="renderMarkdown(turn.text)"></div>
             <div
-              v-for="(tc, ci) in (turn.toolCalls ?? [])"
+              v-if="turn.reasoning"
+              class="folded-original-reasoning overflow-auto whitespace-pre-wrap break-all text-black/40 italic"
+            >
+              {{ turn.reasoning }}
+            </div>
+            <div
+              v-if="turn.text"
+              class="folded-original-text md overflow-auto text-black/70"
+              v-html="renderMarkdown(turn.text)"
+            ></div>
+            <div
+              v-for="(tc, ci) in turn.toolCalls ?? []"
               :key="ci"
               class="folded-original-tool overflow-auto whitespace-pre-wrap break-all text-xs text-black/45"
-            >{{ t('stream.folded.originalTool', { name: tc.name ?? '?', args: tc.argsSummary ?? '' }) }}{{ tc.isError ? t('stream.folded.originalToolFailed') : '' }}</div>
-            <div v-if="!turn.text && !turn.reasoning && !(turn.toolCalls && turn.toolCalls.length)" class="text-xs text-black/40">{{ t('stream.folded.originalEmpty') }}</div>
+            >
+              {{
+                t("stream.folded.originalTool", {
+                  name: tc.name ?? "?",
+                  args: tc.argsSummary ?? "",
+                })
+              }}{{ tc.isError ? t("stream.folded.originalToolFailed") : "" }}
+            </div>
+            <div
+              v-if="
+                !turn.text &&
+                !turn.reasoning &&
+                !(turn.toolCalls && turn.toolCalls.length)
+              "
+              class="text-xs text-black/40"
+            >
+              {{ t("stream.folded.originalEmpty") }}
+            </div>
           </div>
-          <div v-if="(foldedOriginalState(en) as { status: 'loaded'; turns: unknown[] }).turns.length === 0" class="text-xs text-black/40">{{ t('stream.folded.originalEmpty') }}</div>
+          <div
+            v-if="
+              (
+                foldedOriginalState(en) as {
+                  status: 'loaded';
+                  turns: unknown[];
+                }
+              ).turns.length === 0
+            "
+            class="text-xs text-black/40"
+          >
+            {{ t("stream.folded.originalEmpty") }}
+          </div>
         </template>
-        <div v-else-if="foldedOriginalState(en)!.status === 'error'" class="folded-original-error flex items-center gap-2 text-xs text-red-600">
-          <span>{{ t('stream.folded.originalError', { message: (foldedOriginalState(en) as { status: 'error'; message: string }).message }) }}</span>
-          <button type="button" class="retry-original rounded-md border border-black/20 px-2 py-0.5 hover:bg-black/5" @click="retryOriginal(en)">{{ t('common.retry') }}</button>
+        <div
+          v-else-if="foldedOriginalState(en)!.status === 'error'"
+          class="folded-original-error flex items-center gap-2 text-xs text-red-600"
+        >
+          <span>{{
+            t("stream.folded.originalError", {
+              message: (
+                foldedOriginalState(en) as { status: "error"; message: string }
+              ).message,
+            })
+          }}</span>
+          <ElButton
+            native-type="button"
+            class="retry-original rounded-md border border-black/20 px-2 py-0.5 hover:bg-black/5"
+            @click="retryOriginal(en)"
+            >{{ t("common.retry") }}</ElButton
+          >
         </div>
       </div>
     </div>
     <!-- roundsep / 系统分隔行（judge 事件以 variant='judge' 走黄色面板样式） -->
-    <div v-else-if="en.kind === 'sep'" :class="en.variant === 'judge' ? 'roundsep judge-panel' : 'roundsep'">{{ en.text }}</div>
+    <div
+      v-else-if="en.kind === 'sep'"
+      :class="en.variant === 'judge' ? 'roundsep judge-panel' : 'roundsep'"
+    >
+      {{ en.text }}
+    </div>
     <!-- issue #42：红色系统错误行 -->
     <div v-else-if="en.kind === 'syserr'" class="syserr">{{ en.text }}</div>
     <!-- 工具卡片（issue #85：可折叠，默认收起；ok/err 左边框分级；头部整行 button 防溢出） -->
     <div
       v-else-if="en.kind === 'tool' && store.es.toolCards.get(en.callId)"
-      class="my-1.5 max-w-[46rem] rounded-md border border-black/10 border-l-4 bg-black/[0.03] px-3 py-1.5 text-sm"
-      :class="store.es.toolCards.get(en.callId)!.ok === true ? 'border-l-green-600'
-        : store.es.toolCards.get(en.callId)!.ok === false ? 'border-l-red-600' : 'border-l-neutral-500'"
+      class="stream-tool"
+      :class="
+        store.es.toolCards.get(en.callId)!.ok === true
+          ? 'border-l-green-600'
+          : store.es.toolCards.get(en.callId)!.ok === false
+            ? 'border-l-red-600'
+            : 'border-l-neutral-500'
+      "
     >
-      <button
-        type="button"
-        class="flex w-full min-w-0 items-center gap-2 text-left"
+      <ElButton
+        native-type="button"
+        text
+        class="stream-disclosure"
         :aria-expanded="isExpanded(en.callId)"
         @click="toggleCard(en.callId)"
       >
         <span
           class="shrink-0 font-semibold"
-          :class="store.es.toolCards.get(en.callId)!.ok === false ? 'text-red-600' : ''"
-        >🔧 {{ store.es.toolCards.get(en.callId)!.name }}</span>
-        <span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-normal text-black/50">
+          :class="
+            store.es.toolCards.get(en.callId)!.ok === false
+              ? 'text-red-600'
+              : ''
+          "
+          >🔧 {{ store.es.toolCards.get(en.callId)!.name }}</span
+        >
+        <span
+          class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-normal text-black/50"
+        >
           {{ summaryText(store.es.toolCards.get(en.callId)!) }}
         </span>
         <span
           class="shrink-0 font-normal"
-          :class="store.es.toolCards.get(en.callId)!.ok === false ? 'text-red-600' : 'text-black/50'"
-        >{{ statusMark(store.es.toolCards.get(en.callId)!) }}</span>
+          :class="
+            store.es.toolCards.get(en.callId)!.ok === false
+              ? 'text-red-600'
+              : 'text-black/50'
+          "
+          >{{ statusMark(store.es.toolCards.get(en.callId)!) }}</span
+        >
         <span
           class="shrink-0 text-black/50 transition-transform duration-150"
           :class="{ 'rotate-180': isExpanded(en.callId) }"
-        >▾</span>
-      </button>
+          >▾</span
+        >
+      </ElButton>
       <!-- 展开态：完整 args（pre 块永不溢出）+ 结果摘要行（tool_result 只带 digest，不虚构全文） -->
       <template v-if="isExpanded(en.callId)">
-        <pre class="mt-1 overflow-auto whitespace-pre-wrap break-all font-normal text-black/70">{{ cardArgs(store.es.toolCards.get(en.callId)!) }}</pre>
-        <div class="font-normal text-black/50">{{ cardOut(store.es.toolCards.get(en.callId)!) }}</div>
+        <pre class="stream-details">{{
+          cardArgs(store.es.toolCards.get(en.callId)!)
+        }}</pre>
+        <div class="font-normal text-black/50">
+          {{ cardOut(store.es.toolCards.get(en.callId)!) }}
+        </div>
       </template>
     </div>
     <!-- issue #188：推理块（与正文分离、默认收起、可展开）——沿用工具卡片的按钮+chevron 折叠风格 -->
-    <div
-      v-else-if="en.kind === 'reasoning'"
-      class="my-1.5 max-w-[46rem] rounded-md border border-black/10 border-l-4 border-l-neutral-400 bg-black/[0.02] px-3 py-1.5 text-sm"
-    >
-      <button
-        type="button"
-        class="flex w-full min-w-0 items-center gap-2 text-left"
+    <div v-else-if="en.kind === 'reasoning'" class="stream-reasoning">
+      <ElButton
+        native-type="button"
+        text
+        class="stream-disclosure"
         :aria-expanded="isReasoningExpanded(en.id)"
         @click="toggleReasoning(en.id)"
       >
-        <span class="shrink-0 font-semibold text-black/60">🧠 {{ t('stream.reasoning') }}</span>
-        <span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-normal text-black/40">
+        <span class="shrink-0 font-semibold text-black/60"
+          >🧠 {{ t("stream.reasoning") }}</span
+        >
+        <span
+          class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-normal text-black/40"
+        >
           {{ reasoningSummary(en.text) }}
         </span>
         <span
           class="shrink-0 text-black/50 transition-transform duration-150"
           :class="{ 'rotate-180': isReasoningExpanded(en.id) }"
-        >▾</span>
-      </button>
-      <pre v-if="isReasoningExpanded(en.id)" class="mt-1 overflow-auto whitespace-pre-wrap break-all font-normal text-black/70">{{ en.text }}</pre>
+          >▾</span
+        >
+      </ElButton>
+      <pre v-if="isReasoningExpanded(en.id)" class="stream-details">{{
+        en.text
+      }}</pre>
     </div>
   </template>
 </template>

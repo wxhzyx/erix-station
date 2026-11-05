@@ -76,11 +76,11 @@ async function mountWorkbench(user: AuthUser = FDE_USER, dirs = DIRS, gitLightBo
 
 /** 「↓ 最新」悬浮按钮：jsdom 无真实布局，手工造出「距底 > AUTO_FOLLOW_GAP」并派发 scroll。 */
 async function triggerScrollAway(wrapper: Awaited<ReturnType<typeof mountWorkbench>>) {
-  const el = wrapper.find('section > div').element as HTMLElement;
+  const el = wrapper.find('.workspace-stream').element as HTMLElement;
   Object.defineProperty(el, 'scrollHeight', { value: 1000, configurable: true });
   Object.defineProperty(el, 'clientHeight', { value: 300, configurable: true });
   el.scrollTop = 0;
-  await wrapper.find('section > div').trigger('scroll');
+  await wrapper.find('.workspace-stream').trigger('scroll');
 }
 
 /** 切语言：点个人偏好 store 的语言。 */
@@ -92,17 +92,17 @@ async function switchToEnglish(_wrapper: Awaited<ReturnType<typeof mountWorkbenc
 describe('WorkbenchView 顶栏 · i18n（issue #101 P2）', () => {
   it('中文顶栏保留目录与身份，个人操作集中到头像菜单', async () => {
     const wrapper = await mountWorkbench();
-    const nav = wrapper.find('header button');
+    const nav = wrapper.find('.workspace-toolbar button');
     expect(nav.text()).toBe('项目与会话');
     expect(nav.attributes('aria-label')).toBe('项目与会话');
     // cwd 徽标：hover 全路径 + 点击复制提示
-    const badge = wrapper.find('header button[title]');
+    const badge = wrapper.find('.workspace-toolbar button[title]');
     expect(badge.attributes('title')).toBe('~/projects/demo（点击复制）');
-    expect(badge.text()).toContain('📁 demo');
+    expect(wrapper.find('.workspace-title').text()).toContain('demo');
     // 账号标识：login（role / fde_name）
-    expect(wrapper.find('.rail-profile strong').text()).toBe('Alice');
+    expect(wrapper.find('.account-name strong').text()).toBe('Alice');
     // 普通 FDE 无「管理台」入口；账号菜单提供个人操作
-    expect(wrapper.find('.station-topbar a[href="/admin"]').exists()).toBe(false);
+    expect(wrapper.find('.rail-menu').text()).not.toContain('管理台');
     // 工作页标题栏不再重复设置、语言或退出入口
     expect(wrapper.find('header').text()).not.toContain('登出');
     expect(wrapper.find('[aria-label="账号菜单"]').exists()).toBe(true);
@@ -114,39 +114,39 @@ describe('WorkbenchView 顶栏 · i18n（issue #101 P2）', () => {
 
   it('平台管理员（第 ② 类人：admin 且有工位）：顶栏「管理台」入口；账号位于主导航', async () => {
     const wrapper = await mountWorkbench(ADMIN_WITH_SEAT);
-    expect(wrapper.find('.rail-profile strong').text()).toBe('Root');
-    expect(wrapper.find('.station-topbar a[href="/admin"]').text()).toContain('管理台');
+    expect(wrapper.find('.account-name strong').text()).toBe('Root');
+    expect(wrapper.find('.rail-menu .el-menu-item:last-child').text()).toContain('管理台');
   });
 
   it('没有工位的成员仍显示账号', async () => {
     const wrapper = await mountWorkbench(FDE_NO_SEAT);
-    expect(wrapper.find('.rail-profile strong').text()).toBe('Bob');
-    expect(wrapper.find('.station-topbar a[href="/admin"]').exists()).toBe(false);
+    expect(wrapper.find('.account-name strong').text()).toBe('Bob');
+    expect(wrapper.find('.rail-menu').text()).not.toContain('管理台');
   });
 
   it('「↓ 最新」悬浮按钮文案走 i18n（离开底部时出现）', async () => {
     const wrapper = await mountWorkbench();
-    expect(wrapper.find('section > button').exists()).toBe(false);
+    expect(wrapper.find('.jump-latest').exists()).toBe(false);
     await triggerScrollAway(wrapper);
-    expect(wrapper.find('section > button').text()).toBe('↓ 最新');
+    expect(wrapper.find('.jump-latest').text()).toBe('↓ 最新');
   });
 
   it('切 English：顶栏 + 嵌套侧栏文案即时变英文，并持久化', async () => {
     const wrapper = await mountWorkbench(ADMIN_WITH_SEAT);
-    expect(wrapper.find('.rail-profile strong').text()).toBe('Root');
+    expect(wrapper.find('.account-name strong').text()).toBe('Root');
 
     await switchToEnglish(wrapper);
 
-    expect(wrapper.find('header button').text()).toBe('Projects & sessions');
-    expect(wrapper.find('header button').attributes('aria-label')).toBe('Projects and sessions');
-    expect(wrapper.find('header button[title]').attributes('title')).toBe('~/projects/demo (click to copy)');
+    expect(wrapper.find('.workspace-toolbar button').text()).toBe('Projects & sessions');
+    expect(wrapper.find('.workspace-toolbar button').attributes('aria-label')).toBe('Projects and sessions');
+    expect(wrapper.find('.workspace-toolbar button[title]').attributes('title')).toBe('~/projects/demo (click to copy)');
     expect(wrapper.find('[aria-label="Account menu"]').exists()).toBe(true);
-    expect(wrapper.find('.station-topbar a[href="/admin"]').text()).toContain('Admin console');
+    expect(wrapper.find('.rail-menu .el-menu-item:last-child').text()).toContain('Admin console');
     expect(wrapper.find('header').text()).not.toContain('Sign out');
     expect(wrapper.find('[role="separator"]').attributes('aria-label')).toBe('Resize sidebar');
     // 嵌套子组件（SidebarPanel/DirSelect）同样响应（全局 locale 向子树传播）
     expect(wrapper.text()).toContain('＋ New session');
-    expect(wrapper.text()).toContain('＋ New directory');
+    expect(wrapper.findComponent({ name: 'DirSelect' }).exists()).toBe(true);
     // 持久化 + <html lang> 同步
     expect(localStorage.getItem('locale')).toBe('en');
     expect(document.documentElement.lang).toBe('en');
@@ -155,9 +155,9 @@ describe('WorkbenchView 顶栏 · i18n（issue #101 P2）', () => {
   it('切 English 后「↓ 最新」同样变英文', async () => {
     const wrapper = await mountWorkbench();
     await triggerScrollAway(wrapper);
-    expect(wrapper.find('section > button').text()).toBe('↓ 最新');
+    expect(wrapper.find('.jump-latest').text()).toBe('↓ 最新');
     await switchToEnglish(wrapper);
-    expect(wrapper.find('section > button').text()).toBe('↓ Latest');
+    expect(wrapper.find('.jump-latest').text()).toBe('↓ Latest');
   });
 });
 
@@ -385,41 +385,24 @@ describe('顶栏收工灯接线（#359 P0b）', () => {
 });
 
 // ---- issue #282 落点修正：状态条从窗口顶部移到输入框上沿（顶部那行没人看）----
-describe('状态条落点：紧贴输入框上方（#282 落点调整）', () => {
-  /** 取 <section>（会话区）直系子元素的 class 序列——落点是**结构**问题，只能按兄弟顺序钉。 */
-  async function sectionKids(sessionId: string | null) {
+describe('状态条落点：独立输入区域', () => {
+  it('运行状态、队列、输入框按顺序放置，消息流独立滚动', async () => {
     const wrapper = await mountWorkbench();
-    const store = useWorkbenchStore();
-    store.sessionId = sessionId; // 状态条只在有选中会话时挂载（没有 run 可报）
+    const store = useWorkbenchStore(); store.sessionId = 's1';
     await flushPromises();
-    const section = wrapper.find('main section');
-    expect(section.exists(), '会话区 <section> 必须在').toBe(true);
-    return Array.from(section.element.children).map((el) => el.className.toString());
-  }
-
-  it('顺序 = 消息流 → 状态条 → composer（状态条夹在两者之间，不再在窗口顶部）', async () => {
-    const classes = await sectionKids('s1');
-    const stream = classes.findIndex((c) => c.includes('overflow-auto'));
-    const status = classes.findIndex((c) => c.includes('run-status-bar'));
-    const composer = classes.length - 1; // composer 是会话区最后一个兄弟（modal / 悬浮按钮都是绝对定位的 v-if）
-    expect(status, '状态条必须渲染在会话区里').toBeGreaterThan(-1);
-    expect(status, '状态条在消息流**下方**').toBe(stream + 1);
-    expect(status, '状态条紧贴 composer 上方').toBe(composer - 1);
-    // 分隔线方向跟着落点翻转：贴输入框后分隔线在上沿（border-t），不再是压着消息流的 border-b
-    const bar = classes[status].split(/\s+/);
-    expect(bar).toContain('border-t');
-    expect(bar).not.toContain('border-b'); // 整类名比对：`border-black/10` 里含子串 `border-b`，不能用 includes
-    expect(bar).toContain('border-black/10');
-    // 状态条与输入框读作**一块**：两者之间不得再叠第二条线
-    expect(classes[composer].split(/\s+/)).not.toContain('border-t');
+    const input = wrapper.get('.workspace-input-region');
+    expect(wrapper.get('.workspace-stream').element.nextElementSibling).toBe(input.element);
+    expect(input.findComponent({ name: 'RunStatusBar' }).exists()).toBe(true);
+    expect(input.findComponent({ name: 'QueuedInputsBar' }).exists()).toBe(true);
+    expect(input.findComponent({ name: 'ComposerBar' }).exists()).toBe(true);
+    const kids = Array.from(input.element.children);
+    expect(kids[0].className).toContain('run-status-bar');
+    expect(kids[kids.length - 1].className).toContain('work-input-area');
   });
-
-  it('无选中会话（状态条不挂）⇒ composer 自己补上沿分隔线，不与流区粘连', async () => {
-    const classes = await sectionKids(null);
-    expect(classes.some((c) => c.includes('run-status-bar')), '无会话时不挂状态条').toBe(false);
-    const composer = classes[classes.length - 1].split(/\s+/);
-    expect(composer).toContain('border-t');
-    expect(composer).toContain('border-black/10');
+  it('未选中会话时没有状态条，输入区域仍存在', async () => {
+    const wrapper = await mountWorkbench();
+    expect(wrapper.findComponent({ name: 'RunStatusBar' }).exists()).toBe(false);
+    expect(wrapper.get('.workspace-input-region').findComponent({ name: 'ComposerBar' }).exists()).toBe(true);
   });
 });
 

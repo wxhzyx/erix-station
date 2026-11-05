@@ -274,9 +274,9 @@ describe('工作台 · 预览端口段已搬进左栏（issue #308）', () => {
       expect(bar.element.closest('aside')).not.toBeNull();
       expect(bar.element.closest('[data-test="sidebar-bottom-stack"]')).not.toBeNull();
       // ③ 结构判据：header 的下一个兄弟就是 main ⇒ 顶栏与消息流之间不再有端口区块
-      expect(wrapper.get('header').element.nextElementSibling!.tagName.toLowerCase()).toBe('main');
+      expect(wrapper.get('.workspace-toolbar').element.nextElementSibling!.className).toContain('workspace-stream');
       // ④ 消息流那一栏（aside 的兄弟 section）里没有端口面板（面板只在侧栏里）
-      expect(wrapper.get('main > section').element.querySelector('[data-test="preview-ports-panel-body"]')).toBeNull();
+      expect(wrapper.get('.workspace-canvas').element.querySelector('[data-test="preview-ports-panel-body"]')).toBeNull();
       // ⑤ 三个几何钩子在工作台 DOM 上都在
       expect(wrapper.find('[data-test="sidebar-aside"]').exists()).toBe(true);
       expect(wrapper.find('[data-test="sidebar-session-list"]').exists()).toBe(true);
@@ -287,7 +287,7 @@ describe('工作台 · 预览端口段已搬进左栏（issue #308）', () => {
       //    变异取证：本条不存在时，把 aside 的 `overflow-hidden` 改回 `overflow-y-auto` ⇒ 66 条全绿（抓不住），
       //    补上后 ⇒ 恰本条红 ⇒ 「三层滚动不打架」在 aside 这一层第一次有牙。
       const aside = wrapper.get('aside').element;
-      expect(aside.classList.contains('overflow-hidden')).toBe(true);
+      expect(aside.classList.contains('workspace-explorer')).toBe(true);
       for (const cls of ['overflow-y-auto', 'overflow-auto', 'overflow-scroll']) {
         expect(aside.classList.contains(cls)).toBe(false);
       }

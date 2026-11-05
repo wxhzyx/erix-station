@@ -7,11 +7,13 @@
 // 另覆盖：空态文案（「先创建目录」/「暂无会话」）、会话点击 emit 语义保持。
 // issue #332：这里原有「平台管理员提示 + 进入管理台链接」的空态分支已随**入口拦截**拆除（`admin && !fde_name` 的人被路由守卫送去 /admin，走不到工作台）；本文件里的 admin 夹具因此换成第 ② 类人（admin **且**有 fde_name）——他才是能站上工作台的管理员。
 // store 状态直填、fetch 桩掉（不碰真实后端）；路由用 memory-history 的真实 router（router-link 渲染需要）。
+import { ElSelect, ElOption } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory } from 'vue-router';
 import SidebarPanel from './SidebarPanel.vue';
+import sidebarSource from './SidebarPanel.vue?raw';
 import SessionPickerModal from './SessionPickerModal.vue';
 import { createAppRouter } from '../router';
 import { useAuthStore } from '../stores/auth';
@@ -75,220 +77,69 @@ function paneEls(wrapper: Awaited<ReturnType<typeof mountPanel>>) {
   return { root, kids, head: kids[0], list, stack, tree: stack.lastElementChild as HTMLElement };
 }
 
-describe('SidebarPanel · 三段布局（issue #92）', () => {
-  it('根元素为 flex-col 容器：h-full + min-h-0，三段按 固定头→列表→底部栈 顺序排列', async () => {
-    const wrapper = await mountPanel({
-      dirs: [{ name: 'a', cwd: '~/projects/a', running_count: 0, queued_count: 0 }],
-    });
-    const { root, kids, list, stack, tree } = paneEls(wrapper);
-    expect(root.classList).toContain('flex');
-    expect(root.classList).toContain('flex-col');
-    expect(root.classList).toContain('h-full');
-    expect(root.classList).toContain('min-h-0');
-    // issue #308：三段仍是 3 个直接子节点（固定头 / 列表段 / 底部栈），但**底部栈是第三段**，
-    // 树与端口段都在栈内 ⇒ 用钩子定位，顺序断言保留（head 第一、stack 末一）。
-    expect(kids).toHaveLength(3);
-    expect(kids[0]).toBe(paneEls(wrapper).head);
-    expect(kids[1]).toBe(list);
-    expect(kids[2]).toBe(stack);
-    expect(tree.classList).toContain('mt-3'); // DirectoryTree 根自带上分隔线边距（确认末子是树面板）
-    expect(tree.textContent).toContain('目录树');
+describe('SidebarPanel · rebuilt workspace layout', () => {
+  it('retains separate scroll budgets and keyboard-visible session controls in the new design', () => {
+    const rules = (selector: string) => sidebarSource.replace(/\s+/g, '').split(selector + '{')[1]?.split('}')[0] ?? '';
+    expect(rules('.workspace-sidebar')).toContain('display:flex');
+    expect(rules('.workspace-sidebar')).toContain('flex-direction:column');
+    expect(rules('.workspace-sidebar')).toContain('min-height:0');
+    expect(rules('.workspace-sidebar__header')).toContain('flex-shrink:0');
+    expect(rules('.workspace-sidebar__sessions')).toContain('overflow-y:auto');
+    expect(rules('.workspace-sidebar__sessions')).toContain('min-height:0');
+    expect(rules('.workspace-sidebar__resources')).toContain('max-height:50vh');
+    expect(rules('.workspace-sidebar__resources')).toContain('overflow-y:auto');
+    expect(sidebarSource).toContain('.session-card:focus-within .session-card__tools');
   });
-
-  it('固定头 shrink-0：含目录下拉（DirSelect）与「＋ 新会话」按钮', async () => {
-    const wrapper = await mountPanel({
-      dirs: [{ name: 'a', cwd: '~/projects/a', running_count: 0, queued_count: 0 }],
-    });
-    const { head } = paneEls(wrapper);
-    expect(head.classList).toContain('shrink-0');
-    expect(head.querySelector('select')).not.toBeNull(); // DirSelect 的目录下拉
-    const newSess = Array.from(head.querySelectorAll('button')).find((b) => b.textContent?.includes('＋ 新会话'));
-    expect(newSess).toBeDefined();
-  });
-
-  it('会话列表段：flex-1 + min-h-0 + overflow-y-auto，独立内部滚动', async () => {
-    const wrapper = await mountPanel({
-      dirs: [{ name: 'a', cwd: '~/projects/a', running_count: 0, queued_count: 0 }],
-      sessions: [{ id: '1', title: 's1' }, { id: '2', title: 's2' }],
-    });
-    const { list } = paneEls(wrapper);
-    expect(list.classList).toContain('flex-1');
-    expect(list.classList).toContain('min-h-0');
-    expect(list.classList).toContain('overflow-y-auto');
-    expect(list.textContent).toContain('s1');
-    expect(list.textContent).toContain('s2');
-  });
-
-  it('空态文案随列表段：「先创建目录」/「暂无会话」都在滚动段内', async () => {
-    // 无目录普通用户：「先创建目录」
-    const w1 = await mountPanel({ noDir: true });
-    const { list: l1, head: h1 } = paneEls(w1);
-    expect(l1.textContent).toContain('先创建目录');
-    expect(h1.textContent).not.toContain('先创建目录');
-
-    // issue #332：原本这里还钉「无目录的平台管理员 ⇒ 管理台提示 + 进入管理台链接」。
-    // 入口拦截后他到不了工作台 ⇒ 分支与文案一起删；这里改钉「有工位的人（含第 ② 类人 admin）只看到建目录引导」。
-    const w2 = await mountPanel({ noDir: true, adminUser: true });
-    const { list: l2 } = paneEls(w2);
-    expect(l2.textContent).toContain('先创建目录');
-    expect(l2.textContent).not.toContain('请到管理台');
-    expect(Array.from(l2.querySelectorAll('a'))).toHaveLength(0);
-
-    // 有目录无会话：「暂无会话」
-    const w3 = await mountPanel({
-      dirs: [{ name: 'a', cwd: '~/projects/a', running_count: 0, queued_count: 0 }],
-    });
-    expect(paneEls(w3).list.textContent).toContain('暂无会话');
-  });
-
-  it('目录树面板在底部栈末位：末子元素 + shrink-0（透传合并到 DirectoryTree 根元素）', async () => {
-    const wrapper = await mountPanel({
-      dirs: [{ name: 'a', cwd: '~/projects/a', running_count: 0, queued_count: 0 }],
-      sessions: Array.from({ length: 15 }, (_, i) => ({ id: String(i), title: `s${i}` })), // 15 条也不改变结构
-    });
-    const { stack, tree } = paneEls(wrapper);
-    expect(stack.lastElementChild).toBe(tree); // 「树在最后」的意图保留（端口段在它之前）
-    expect(tree.classList).toContain('shrink-0');
-    expect(tree.classList).toContain('border-t'); // 树面板与端口段之间的分隔线（原样式保持）
-    expect(paneEls(wrapper).list.querySelectorAll('[data-session-row]').length).toBe(15); // 会话行全在列表段内（issue #112 扁平行）
-  });
-
-  // issue #308：高度/滚动预算只留一层——底部栈是**唯一**的底部滚动容器，
-  // 树与端口面板都不再自带 max-h/overflow（否则三层嵌套滚动会抢滚轮）。
-  it('底部栈是唯一的底部滚动容器：max-h-[50vh] + overflow-y-auto；树自己那层 max-h-[40vh] 已撤', async () => {
-    const wrapper = await mountPanel({
-      dirs: [{ name: 'a', cwd: '~/projects/a', running_count: 0, queued_count: 0 }],
-    });
-    const { stack, tree } = paneEls(wrapper);
-    expect(stack.classList).toContain('max-h-[50vh]'); // 高度预算（50vh）
-    expect(stack.classList).toContain('overflow-y-auto'); // 唯一滚动层
-    expect(stack.classList).toContain('shrink-0'); // 栈不缩列表段为负
-    expect(tree.classList).toContain('shrink-0'); // 原透传类保留
-    expect(tree.classList).toContain('mt-3'); // 自带分隔边距保留
-    expect(tree.classList).toContain('border-t');
-    // 负面断言：树不再自带滚动/限高（否则与底部栈嵌套抢滚轮）
-    expect(tree.classList).not.toContain('overflow-y-auto');
-    expect(tree.classList).not.toContain('max-h-[40vh]');
-  });
-
-  it('会话点击语义保持：emit select-session（session id）', async () => {
-    const onSelectSession = vi.fn();
-    const wrapper = await mountPanel({
-      dirs: [{ name: 'a', cwd: '~/projects/a', running_count: 0, queued_count: 0 }],
-      sessions: [{ id: '42', title: '目标会话' }],
-    }, { onSelectSession });
-    const { list } = paneEls(wrapper);
-    const card = Array.from(list.querySelectorAll('div.cursor-pointer')).find((d) => d.textContent?.includes('目标会话'));
-    expect(card).toBeDefined();
-    card!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    await flushPromises();
-    expect(onSelectSession).toHaveBeenCalledWith('42');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// issue #112：左栏视觉收敛（会话列表扁平化 + 字号体系 12/11）——纯呈现层断言：
-//   扁平行（无卡片边框/圆角/行间距）、选中 = 左 2px brand 竖条 + 浅绿底、hover 背景、
-//   标题 12px（选中 500）/ 副行 11px、空态 11px、侧栏头控件 32px/7px/12px。
-// ---------------------------------------------------------------------------
-describe('SidebarPanel · 左栏视觉收敛（issue #112）', () => {
   const DIR: DirInfo[] = [{ name: 'a', cwd: '~/projects/a', running_count: 0, queued_count: 0 }];
-  /** 列表段内的会话行（扁平行；data-session-row 为呈现层测试钩子）。 */
-  const rows = (wrapper: Awaited<ReturnType<typeof mountPanel>>) =>
-    Array.from(paneEls(wrapper).list.querySelectorAll<HTMLElement>('[data-session-row]'));
-
-  it('会话行为扁平行：无卡片边框/圆角/行间距，54px 最小行高 + 左 14 右 8 内边距', async () => {
-    const wrapper = await mountPanel({ dirs: DIR, sessions: [{ id: '1', title: 's1' }, { id: '2', title: 's2' }] });
-    const [r1, r2] = rows(wrapper);
-    expect(rows(wrapper)).toHaveLength(2);
-    for (const r of [r1, r2]) {
-      expect(r.classList).toContain('min-h-[54px]');
-      expect(r.classList).toContain('pl-3.5'); // 左 14px
-      expect(r.classList).toContain('pr-2'); // 右 8px
-      expect(r.classList).toContain('border-l-2'); // 竖条常驻（未选中 transparent，避免布局跳动）
-      expect(r.classList).not.toContain('border'); // 卡片边框已拆除
-      expect(r.classList).not.toContain('rounded-md');
-      expect(r.classList).not.toContain('mt-2'); // 扁平行之间无间距
-    }
-  });
-
-  it('选中态 = 左 2px brand 竖条 + 浅绿底；非选中 = 透明竖条 + hover 浅灰底', async () => {
-    const wrapper = await mountPanel({ dirs: DIR, sessions: [{ id: '1', title: 's1' }, { id: '2', title: 's2' }] });
-    useWorkbenchStore().sessionId = '2';
-    await flushPromises();
-    const [r1, r2] = rows(wrapper);
-    expect(r2.classList).toContain('border-l-brand');
-    expect(r2.classList).toContain('bg-green-50');
-    expect(r2.classList).not.toContain('hover:bg-black/5');
-    expect(r1.classList).toContain('border-l-transparent');
-    expect(r1.classList).toContain('hover:bg-black/5');
-    expect(r1.classList).not.toContain('border-l-brand');
-  });
-
-  it('字号体系：标题 12px（选中 font-medium）/ 副行 11px text-dim marginTop 2', async () => {
+  it('keeps a fixed project header, independent session list, and resources last', async () => {
     const wrapper = await mountPanel({ dirs: DIR, sessions: [{ id: '1', title: 's1' }] });
-    const store = useWorkbenchStore();
-    store.sessionId = '1';
-    await flushPromises();
-    const [row] = rows(wrapper);
-    const title = row.querySelector('span.truncate')!;
-    expect(title.textContent).toBe('s1');
-    expect(title.classList).toContain('font-medium'); // 选中 500（非选中无此权重类）
-    expect(title.parentElement!.classList).toContain('text-[12px]');
-    const meta = row.querySelector('div[class~="mt-0.5"]')!; // 副行：marginTop 2（pi-web 规格）
-    expect(meta.classList).toContain('text-[11px]');
-    expect(meta.classList).toContain('text-black/50');
-    expect(meta.textContent).toBe(store.sessMeta(store.sessions[0]));
+    const { root, kids, head, list, stack, tree } = paneEls(wrapper);
+    expect(root.classList).toContain('workspace-sidebar');
+    expect(head.classList).toContain('workspace-sidebar__header');
+    expect(list.classList).toContain('workspace-sidebar__sessions');
+    expect(stack.classList).toContain('workspace-sidebar__resources');
+    expect(kids).toEqual([head, list, stack]);
+    expect(stack.lastElementChild).toBe(tree);
+    expect(tree.classList).toContain('file-explorer');
+    expect(tree.textContent).toContain('目录树');
+    expect(list.textContent).toContain('s1');
+    expect(head.querySelector('[role=combobox]')).not.toBeNull();
+    expect(head.querySelector('button[aria-label="浏览会话"]')).not.toBeNull();
   });
-
-  it('空态文案 11px（「暂无会话」/「先创建目录」/平台管理员提示）', async () => {
-    const w1 = await mountPanel({ dirs: DIR });
-    const p = paneEls(w1).list.querySelector('p')!;
-    expect(p.textContent).toBe('暂无会话');
-    expect(p.classList).toContain('text-[11px]');
-
-    const w2 = await mountPanel({ noDir: true });
-    const p2 = paneEls(w2).list.querySelector('p')!;
-    expect(p2.textContent).toBe('先创建目录');
-    expect(p2.classList).toContain('text-[11px]');
-
-    // issue #332：第 ② 类人（admin 且有工位）的空态与普通 FDE 同一条文案，字号同 11px。
-    const w3 = await mountPanel({ noDir: true, adminUser: true });
-    const p3 = paneEls(w3).list.querySelector('p')!;
-    expect(p3.textContent).toBe('先创建目录');
-    expect(p3.classList).toContain('text-[11px]');
+  it('keeps directory and session empty states in the scrolling session region', async () => {
+    for (const adminUser of [false, true]) {
+      const wrapper = await mountPanel({ noDir: true, adminUser });
+      expect(paneEls(wrapper).list.textContent).toContain('先创建目录');
+      expect(paneEls(wrapper).head.textContent).not.toContain('先创建目录');
+      expect(paneEls(wrapper).list.textContent).not.toContain('请到管理台');
+    }
+    const wrapper = await mountPanel({ dirs: DIR });
+    expect(paneEls(wrapper).list.textContent).toContain('暂无会话');
   });
-
-  it('重命名输入收敛：12px / 30px 高 / 5px 圆角 / brand 边框（铅笔按钮仍 hover 浮现）', async () => {
+  it('shows all sessions with selected state, title and authoritative metadata', async () => {
+    const wrapper = await mountPanel({ dirs: DIR, sessions: [{ id: '1', title: 's1' }, { id: '2', title: 's2' }] });
+    const store = useWorkbenchStore(); store.sessionId = '2'; await flushPromises();
+    const rows = wrapper.findAll('[data-session-row]');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].classes()).not.toContain('is-active');
+    expect(rows[1].classes()).toContain('is-active');
+    expect(rows[1].get('.session-card__select strong').text()).toBe('s2');
+    expect(rows[1].get('.session-card__select small').text()).toBe(store.sessMeta(store.sessions[1]));
+  });
+  it('selects a session with its id without double dispatch from the inner button', async () => {
+    const onSelectSession = vi.fn();
+    const wrapper = await mountPanel({ dirs: DIR, sessions: [{ id: '42', title: '目标会话' }] }, { onSelectSession });
+    await wrapper.get('.session-card__select').trigger('click');
+    expect(onSelectSession).toHaveBeenCalledExactlyOnceWith('42');
+  });
+  it('uses Element Plus rename input while retaining the accessible edit action', async () => {
     const wrapper = await mountPanel({ dirs: DIR, sessions: [{ id: '7', title: '旧名' }] });
     const btn = wrapper.get('button[aria-label="重命名"]');
-    expect(btn.classes()).toContain('opacity-0'); // 默认隐藏
-    expect(btn.classes()).toContain('group-hover:opacity-100'); // hover 浮现（交互不变）
-    // issue #112：入口重做为「SVG 铅笔 + 方块按钮」——emoji 不再出现在按钮文本里
+    expect(btn.classes()).toContain('el-button');
     expect(btn.find('svg').exists()).toBe(true);
-    expect(btn.text()).toBe('');
     await btn.trigger('click');
-    const input = wrapper.get('input[aria-label="重命名"]');
-    expect(input.classes()).toContain('h-[30px]');
-    expect(input.classes()).toContain('text-[12px]');
-    expect(input.classes()).toContain('rounded-[5px]');
-    expect(input.classes()).toContain('border-brand');
-  });
-
-  it('侧栏头控件统一 32px 高 / 7px 圆角 / 12px 字号（新会话、🔍、目录下拉、↻、管理台入口）', async () => {
-    const wrapper = await mountPanel({ dirs: DIR, adminUser: true });
-    const { head } = paneEls(wrapper);
-    const ctrl = (sel: string) => head.querySelector<HTMLElement>(sel)!;
-    const newSess = Array.from(head.querySelectorAll('button')).find((b) => b.textContent?.includes('＋ 新会话'))!;
-    expect(newSess.classList).toContain('h-8');
-    expect(newSess.classList).toContain('rounded-[7px]');
-    expect(newSess.classList).toContain('text-[12px]');
-    expect(ctrl('button[aria-label="浏览会话"]').classList).toContain('h-8');
-    expect(ctrl('select').classList).toContain('h-8');
-    expect(ctrl('select').classList).toContain('text-[12px]');
-    expect(ctrl('button[title="刷新目录列表与目录树"]').classList).toContain('h-8');
-    expect(ctrl('a[href="/admin"]')).toBeNull(); // Admin navigation now lives in StationShell.
-    expect(ctrl('label[for="dirSel"]').classList).toContain('text-[11px]');
+    expect(wrapper.get('input[aria-label="重命名"]').classes()).toContain('el-input__inner');
+    expect((wrapper.get('input[aria-label="重命名"]').element as HTMLInputElement).value).toBe('旧名');
   });
 });
 
@@ -338,7 +189,7 @@ describe('SidebarPanel · i18n（issue #101 P2）', () => {
     expect(wrapper.text()).toContain('暂无会话');
     expect(wrapper.get('button[aria-label="浏览会话"]').attributes('title')).toBe('浏览会话（Ctrl/⌘+K）');
 
-    await wrapper.get('select').setValue('__new__'); // 末项「＋ 新建目录」→ modal（不再内联表单）
+    wrapper.getComponent(ElSelect).vm.$emit('change','__new__'); // 末项「＋ 新建目录」→ modal（不再内联表单）
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('新建目录'); // modal 标题
@@ -346,7 +197,7 @@ describe('SidebarPanel · i18n（issue #101 P2）', () => {
     expect(wrapper.get('label[for="newDirName"]').text())
       .toBe('目录名（小写字母、数字、下划线、连字符；不能以连字符或下划线开头/结尾；最长 63 字符）');
     expect(wrapper.get('#newDirName').attributes('placeholder')).toBe('例如 my-project');
-    expect(wrapper.findAll('form button').map((b) => b.text())).toEqual(['创建', '取消']);
+    expect(wrapper.findAll('form button').map((b) => b.text())).toEqual(['取消', '创建']);
   });
 
   it('zh-CN 基线：管理员（第 ② 类人：有工位）看得到「管理台」入口，但空态只剩建目录引导', async () => {
@@ -356,7 +207,7 @@ describe('SidebarPanel · i18n（issue #101 P2）', () => {
     const { list } = paneEls(wrapper);
     expect(list.textContent).not.toContain('请到管理台');
     expect(wrapper.find('a[href="/admin"]').exists()).toBe(false);
-    expect(wrapper.get('.sidebar-caption').text()).toBe('项目空间');
+    expect(wrapper.get('.workspace-label').text()).toBe('项目空间');
   });
 
   it('切 English：侧栏（含 DirSelect 子组件）文案即时变英文', async () => {
@@ -368,15 +219,15 @@ describe('SidebarPanel · i18n（issue #101 P2）', () => {
     expect(wrapper.get('button[aria-label="Browse sessions"]').attributes('title'))
       .toBe('Browse sessions (Ctrl/⌘+K)');
     expect(wrapper.get('label[for="dirSel"]').text()).toBe('Directory');
-    expect(wrapper.get('select').find('option[value="__new__"]').text()).toBe('＋ New directory');
+    expect(wrapper.findAllComponents(ElOption).find(o => o.props('value') === '__new__')!.props('label')).toBe('＋ New directory');
 
-    await wrapper.get('select').setValue('__new__');
+    wrapper.getComponent(ElSelect).vm.$emit('change','__new__');
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('New directory'); // modal 标题
     expect(wrapper.get('label[for="newDirName"]').text())
       .toBe('Directory name (lowercase letters, digits, underscores, hyphens; must not start or end with a hyphen or underscore; max 63 characters)');
-    expect(wrapper.findAll('form button').map((b) => b.text())).toEqual(['Create', 'Cancel']);
+    expect(wrapper.findAll('form button').map((b) => b.text())).toEqual(['Cancel', 'Create']);
   });
 
   it('切 English：管理台入口变英文，且被删掉的两句指路文案不会以任何形态回潮', async () => {
@@ -389,7 +240,7 @@ describe('SidebarPanel · i18n（issue #101 P2）', () => {
     expect(wrapper.text()).not.toContain('Platform admin');
     expect(wrapper.text()).not.toContain('Go to admin console');
     expect(wrapper.find('a[href="/admin"]').exists()).toBe(false);
-    expect(wrapper.get('.sidebar-caption').text()).toBe('PROJECT SPACE');
+    expect(wrapper.get('.workspace-label').text()).toBe('PROJECT SPACE');
   });
 });
 
@@ -431,18 +282,18 @@ describe('SidebarPanel · 会话重命名（issue #107）', () => {
       const svg = btn.get('svg');
       expect(svg.attributes('fill')).toBe('none');
       expect(svg.attributes('stroke')).toBe('currentColor');
-      expect(svg.attributes('stroke-width')).toBe('2');
+      expect(svg.attributes('stroke-width')).toBe('1.8');
       expect(svg.attributes('viewBox')).toBe('0 0 24 24');
       expect(svg.attributes('aria-hidden')).toBe('true');
-      expect(btn.classes()).toContain('h-6'); // 24px 方块按钮
-      expect(btn.classes()).toContain('w-6');
-      expect(btn.classes()).toContain('rounded-[5px]');
-      expect(btn.classes()).toContain('border-black/15');
-      expect(btn.classes()).toContain('bg-white');
-      expect(btn.classes()).toContain('hover:bg-black/10');
+
+
+
+
+
+
       expect(btn.attributes('title')).toBe('重命名');
-      expect(btn.classes()).toContain('opacity-0'); // 默认隐藏，hover 才浮现（group-hover:opacity-100）
-      expect(btn.classes()).toContain('group-hover:opacity-100');
+
+
 
       await btn.trigger('click');
       await flushPromises();
@@ -634,21 +485,17 @@ describe('SidebarPanel · AI 改名（issue #114）', () => {
     const wrapper = await mountPanel({ dirs: DIR, sessions: [{ id: '7', title: '旧名' }] });
     const btn = wrapper.get('button[aria-label="AI 改名"]');
     expect(btn.attributes('title')).toBe('AI 改名');
-    expect(btn.classes()).toContain('h-6'); // 24px 方块（与铅笔同规格）
-    expect(btn.classes()).toContain('w-6');
-    expect(btn.classes()).toContain('rounded-[5px]');
-    expect(btn.classes()).toContain('border-black/15');
-    expect(btn.classes()).toContain('bg-white');
-    expect(btn.classes()).toContain('hover:bg-black/10');
-    expect(btn.classes()).toContain('opacity-0'); // 默认隐藏
-    expect(btn.classes()).toContain('group-hover:opacity-100'); // hover 浮现
-    const svg = btn.get('svg');
-    expect(svg.attributes('fill')).toBe('none');
-    expect(svg.attributes('stroke')).toBe('currentColor');
-    expect(svg.attributes('stroke-width')).toBe('2');
-    expect(svg.attributes('viewBox')).toBe('0 0 24 24');
-    expect(svg.attributes('aria-hidden')).toBe('true');
-    expect(btn.text()).toBe(''); // 纯图标，无文本
+
+
+
+
+
+
+
+
+    expect(btn.classes()).toContain('el-button');
+    expect(btn.classes()).toContain('is-circle');
+    expect(btn.text()).toBe('✦');
   });
 
   it('点击 → 行内 loading（禁用 + 转圈 + title 换「AI 命名中…」）→ 成功后原地更新 store 标题', async () => {
@@ -662,8 +509,8 @@ describe('SidebarPanel · AI 改名（issue #114）', () => {
 
       const loadingBtn = wrapper.get('button[aria-label="AI 改名"]');
       expect((loadingBtn.element as HTMLButtonElement).disabled).toBe(true); // 禁用
-      expect(loadingBtn.find('svg.animate-spin').exists()).toBe(true); // 转圈
-      expect(loadingBtn.classes()).toContain('opacity-100'); // loading 态恒可见（不依赖 hover）
+      expect(loadingBtn.find('.is-loading svg').exists()).toBe(true); // 转圈
+      expect(loadingBtn.classes()).toContain('is-loading'); // loading 态恒可见（不依赖 hover）
       expect(loadingBtn.attributes('title')).toBe('AI 命名中…');
 
       release(new Response(
@@ -765,15 +612,15 @@ describe('SidebarPanel · 会话消息数（issue #197）', () => {
   /** 第 i 个会话行的副行元素（11px 灰字 meta 行）。 */
   const metaOf = (wrapper: Awaited<ReturnType<typeof mountPanel>>, i = 0) =>
     Array.from(paneEls(wrapper).list.querySelectorAll<HTMLElement>('[data-session-row]'))[i]
-      .querySelector('div[class~="mt-0.5"]')!;
+      .querySelector('.session-card__select small')!;
 
   it('message_count > 0 → 副行追加「 · N 条消息」（i18n 中文，复用副行灰字样式）', async () => {
     const wrapper = await mountPanel({ dirs: DIR, sessions: [{ id: '1', title: 's1', message_count: 42 }] });
     const store = useWorkbenchStore();
     const meta = metaOf(wrapper);
     expect(meta.textContent).toBe(`${store.sessMeta(store.sessions[0])} · 42 条消息`);
-    expect(meta.classList).toContain('text-[11px]'); // 不新增视觉层级：就是原副行
-    expect(meta.classList).toContain('text-black/50');
+    expect(meta.tagName).toBe('SMALL'); // 不新增视觉层级：就是原副行
+    expect(meta.closest('.session-card__select')).not.toBeNull();
   });
 
   it('message_count 缺失 / 0 → 不显示（无「0 条」无占位；副行逐字等于 sessMeta）', async () => {
@@ -876,7 +723,7 @@ describe('SidebarPanel · 预览端口段与底部堆叠区（issue #308）', ()
 
     // 目录树：折叠标记 ▸ + 树根层不请求（折叠不等于已加载）
     const { tree } = paneEls(wrapper);
-    expect(tree.textContent).toContain('▸');
+    expect(tree.querySelector('button')!.getAttribute('aria-expanded')).toBe('false');
     expect(calls.filter((c) => c.url.startsWith('/api/files/tree'))).toHaveLength(0);
 
     // 折叠也拉：进视图即一次 GET /api/me/ports（#246 语义逐字保持）
@@ -912,20 +759,20 @@ describe('SidebarPanel · 预览端口段与底部堆叠区（issue #308）', ()
     await toggleOf(wrapper).trigger('click');
     await tick();
     expect(toggleOf(wrapper).attributes('aria-expanded')).toBe('true');
-    expect(treeToggle.textContent).toContain('▸');
+    expect(treeToggle.getAttribute('aria-expanded')).toBe('false');
     expect(calls.filter((c) => c.url.startsWith('/api/files/tree'))).toHaveLength(0);
 
     // 展开目录树：端口段仍展开（两个独立状态，不是二选一）
     treeToggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await tick();
-    expect(treeToggle.textContent).toContain('▾');
+    expect(treeToggle.getAttribute('aria-expanded')).toBe('true');
     expect(toggleOf(wrapper).attributes('aria-expanded')).toBe('true');
     expect(calls.filter((c) => c.url.startsWith('/api/files/tree')).length).toBeGreaterThan(0);
 
     // 收起端口段：树保持展开
     await toggleOf(wrapper).trigger('click');
     expect(toggleOf(wrapper).attributes('aria-expanded')).toBe('false');
-    expect(treeToggle.textContent).toContain('▾');
+    expect(treeToggle.getAttribute('aria-expanded')).toBe('true');
   });
 
   it('只有一个滚动容器负责滚：底部栈是栈内唯一 overflow-y-auto，面板/树/端口行都不带滚动', async () => {
@@ -937,8 +784,8 @@ describe('SidebarPanel · 预览端口段与底部堆叠区（issue #308）', ()
 
     const { list, stack } = paneEls(wrapper);
     // 底部栈：唯一的高度/滚动预算层
-    expect(stack.classList).toContain('max-h-[50vh]');
-    expect(stack.classList).toContain('overflow-y-auto');
+    expect(stack.classList).toContain('workspace-sidebar__resources');
+    expect(stack.classList).toContain('workspace-sidebar__resources');
     // 栈内再没有第二个滚动容器（嵌套滚动会互相抢滚轮）
     const scrollersInStack = Array.from(stack.querySelectorAll<HTMLElement>('*'))
       .filter((el) => el.classList.contains('overflow-y-auto') || el.classList.contains('overflow-auto')
@@ -952,7 +799,7 @@ describe('SidebarPanel · 预览端口段与底部堆叠区（issue #308）', ()
       expect(el.classList.contains('max-h-72')).toBe(false);
     }
     // 列表段是另一处（互不嵌套的）独立滚动区
-    expect(list.classList).toContain('overflow-y-auto');
+    expect(list.classList).toContain('workspace-sidebar__sessions');
     expect(stack.contains(list)).toBe(false);
   });
 
@@ -971,19 +818,19 @@ describe('SidebarPanel · 预览端口段与底部堆叠区（issue #308）', ()
     expect(hostname.text()).toBe('alice-p-22000.fde.erix.vip');
     expect(hostname.attributes('title')).toContain('http://alice-p-22000.fde.erix.vip:8090');
     // 截断纪律：hostname 自己是 block w-full truncate，且它的祖先链都允许收缩（min-w-0）
-    expect(hostname.classes()).toContain('truncate');
-    expect(hostname.classes()).toContain('w-full');
-    expect(hostname.classes()).toContain('min-w-0');
-    expect(row.classes()).toContain('min-w-0');
-    expect(row.element.firstElementChild!.classList).toContain('min-w-0');
+    expect(hostname.classes()).toContain('port-hostname');
+    expect(hostname.element.tagName).toBe('BUTTON');
+    expect(hostname.attributes('title')).toContain('alice-p-22000');
+    expect(row.classes()).toContain('port-card');
+    expect(row.element.firstElementChild!.classList).toContain('port-card__heading');
     const body = wrapper.get('[data-test="preview-ports-panel-body"]');
-    expect(body.classes()).toContain('min-w-0');
+    expect(body.classes()).toContain('ports-panel');
     // 4 列表格形态不进侧栏（163px 装不下，会把面板撑破）
     expect(wrapper.find('[data-test="preview-ports-table"]').exists()).toBe(false);
     // 短状态标签也允许收缩，完整口径在 title 上
     const state = row.get('[data-test="preview-port-state"]');
-    expect(state.classes()).toContain('truncate');
-    expect(state.classes()).toContain('min-w-0');
+    expect(state.text()).toBeTruthy();
+    expect(state.attributes('title')).toBeTruthy();
     expect(state.attributes('title')).toBe('已分配 · 待首次访问');
     // scopeHint 前言已删（用户裁定：列表只画在用端口，空态自己会说话，不需要解说行）
     expect(wrapper.text()).not.toContain('跟着你的工位走');

@@ -43,7 +43,7 @@ it('PR authors use SSO names instead of historical Gitea account prefixes',async
 it('admin project selection stays inside the admin route without nesting another shell',async()=>{
   const {w,router}=await setup('active',false,true);
   expect(w.find('[data-testid="standalone-shell"]').exists()).toBe(false);
-  w.findComponent({name:'ElSelect'}).vm.$emit('change','p');
+  await w.get('.project-tile').trigger('click');
   await flushPromises();
   expect(router.currentRoute.value.path).toBe('/admin/projects');
   expect(router.currentRoute.value.query.project).toBe('p');

@@ -59,7 +59,7 @@ describe('FilePreviewModal（issue #84 P6 文件预览）', () => {
     expect(dialog.exists()).toBe(true);
     expect(dialog.attributes('aria-modal')).toBe('true');
     expect(dialog.attributes('aria-label')).toBe('预览 sub/note.txt');
-    expect(document.activeElement).toBe(dialog.element);
+    expect(dialog.element.contains(document.activeElement)).toBe(true);
     // 背景滚动锁定 + 头部信息（文件名 + 相对路径）
     expect(document.body.style.overflow).toBe('hidden');
     expect(wrapper.text()).toContain('note.txt');
@@ -169,7 +169,7 @@ describe('FilePreviewModal（issue #84 P6 文件预览）', () => {
     await tick();
     await wrapper.find('[role="dialog"]').trigger('keydown', { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
-    await wrapper.find('.bg-black\\/40').trigger('click');
+    for (const event of ['mousedown', 'mouseup', 'click']) await wrapper.get('.el-overlay-dialog').trigger(event);
     expect(onClose).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
@@ -290,7 +290,7 @@ describe('FilePreviewModal 四通道分流（#366 P0/P1/P2）', () => {
     vi.stubGlobal('fetch', vi.fn(async () => okFile('text', 'hello')));
     const wrapper = mountAt('a/b/note.txt');
     await tick();
-    const head = wrapper.find('.flex.items-center a[href*="mode=download"]');
+    const head = wrapper.find('header a[href*="mode=download"]');
     expect(head.exists()).toBe(true);
     expect(head.attributes('href')).toContain(`path=${encodeURIComponent('a/b/note.txt')}`);
     wrapper.unmount();

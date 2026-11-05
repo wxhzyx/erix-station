@@ -277,8 +277,8 @@ describe('WorkbenchView · 把手集成（aside 兄弟元素 + aria + 宽度绑�
     const wrapper = await mountWorkbench();
     const aside = wrapper.find('aside');
     expect(aside.attributes('style')).toContain('--sidebar-w: 240px');
-    expect(aside.classes()).toContain('w-60');
-    expect(aside.classes()).toContain('shrink-0');
+    expect(aside.classes()).toContain('workspace-explorer');
+    expect(aside.element.nextElementSibling?.getAttribute('role')).toBe('separator');
   });
 
   it('集成链路：键盘微调 → aria-valuenow 与 CSS 变量同步 + localStorage 落盘', async () => {

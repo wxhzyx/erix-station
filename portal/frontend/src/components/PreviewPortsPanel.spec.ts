@@ -5,7 +5,7 @@
 //   ③ 加载中 / 空（本人与代看两种口径）/ 失败（显示后端错误码 + 原文 + 重试）都有可见反馈；
 //   ④ 「打开预览」只 emit 该行的 allocation id（签票时机由调用方决定，面板自己不碰网络）。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import PreviewPortsPanel from './PreviewPortsPanel.vue';
 import { i18n, setLocale } from '../i18n';
 import type { PreviewApiError, PreviewPortItem } from '../lib/previewPorts';
@@ -67,9 +67,10 @@ afterEach(() => {
 });
 
 describe('PreviewPortsPanel · 列表渲染', () => {
-  it('3 条 items ⇒ 3 行，port / hostname / state 逐项可见', () => {
+  it('3 条 items ⇒ 3 行，port / hostname / state 逐项可见', async () => {
     wrapper = mountPanel();
-    const rows = wrapper.findAll('[data-test="preview-port-row"]');
+    await flushPromises();
+    const rows = wrapper.findAll('[data-test="preview-port-row"], .preview-port-row');
     expect(rows).toHaveLength(3);
     expect(rows.map((row) => row.get('[data-test="preview-port-value"]').text()))
       .toEqual(['22000', '22001', '22002']);
@@ -83,8 +84,9 @@ describe('PreviewPortsPanel · 列表渲染', () => {
       .toContain('http://alice-p-22000.fde.erix.vip:8090');
   });
 
-  it('state 文案里不出现「健康 / 运行中」，并给出「仅代表首次放行过」的口径说明', () => {
+  it('state 文案里不出现「健康 / 运行中」，并给出「仅代表首次放行过」的口径说明', async () => {
     wrapper = mountPanel();
+    await flushPromises();
     const states = wrapper.findAll('[data-test="preview-port-state"]').map((node) => node.text());
     for (const text of states) {
       expect(text).not.toMatch(/健康/);
@@ -93,14 +95,16 @@ describe('PreviewPortsPanel · 列表渲染', () => {
     expect(wrapper.text()).toContain('「已放行过」只表示该端口首次凭证放行过');
   });
 
-  it('工作台紧凑形态不渲染放行语义注释（用户裁定：监听事实由观测注解回答，向业务用户解释黑话是噪音）', () => {
+  it('工作台紧凑形态不渲染放行语义注释（用户裁定：监听事实由观测注解回答，向业务用户解释黑话是噪音）', async () => {
     wrapper = mountPanel({ variant: 'list' });
-    expect(wrapper.find('[data-test="preview-port-row"]').exists()).toBe(true);
+    await flushPromises();
+    expect(wrapper.find('[data-test="preview-port-row"], .preview-port-row').exists()).toBe(true);
     expect(wrapper.text()).not.toContain('「已放行过」只表示');
   });
 
-  it('未知 state 取值原样透传（不猜语义，也不误标成已放行过）', () => {
+  it('未知 state 取值原样透传（不猜语义，也不误标成已放行过）', async () => {
     wrapper = mountPanel({ items: [portItem('x', 22003, { state: 'released' })] });
+    await flushPromises();
     expect(wrapper.get('[data-test="preview-port-state"]').text()).toBe('未知状态（released）');
   });
 
@@ -111,14 +115,16 @@ describe('PreviewPortsPanel · 列表渲染', () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     wrapper = mountPanel({ onOpen });
+    await flushPromises();
     await wrapper.findAll('[data-test="preview-port-open"]')[2].trigger('click');
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(onOpen.mock.calls[0]![0]).toMatchObject({ id: 'id-22002', port: 22002 });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('签票进行中：该行显示「签发中…」并禁用全部按钮（一次只签一张票）', () => {
+  it('签票进行中：该行显示「签发中…」并禁用全部按钮（一次只签一张票）', async () => {
     wrapper = mountPanel({ ticketBusyId: 'id-22001' });
+    await flushPromises();
     const buttons = wrapper.findAll('[data-test="preview-port-open"]');
     expect(buttons.map((button) => (button.element as HTMLButtonElement).disabled)).toEqual([true, true, true]);
     expect(buttons[1].text()).toBe('签发通行票…');
@@ -127,20 +133,23 @@ describe('PreviewPortsPanel · 列表渲染', () => {
 });
 
 describe('PreviewPortsPanel · 加载中 / 空 / 失败三态', () => {
-  it('首屏加载中：骨架 + 加载文案，不渲染表格', () => {
+  it('首屏加载中：骨架 + 加载文案，不渲染表格', async () => {
     wrapper = mountPanel({ items: [], loading: true, loaded: false });
+    await flushPromises();
     expect(wrapper.find('[data-test="preview-ports-loading"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('加载中…');
     expect(wrapper.find('[data-test="preview-ports-table"]').exists()).toBe(false);
   });
 
-  it('本人空列表 ⇒ 「你还没有预览端口」；代看空列表 ⇒ 「该 FDE 没有活着的预览端口」', () => {
+  it('本人空列表 ⇒ 「你还没有预览端口」；代看空列表 ⇒ 「该 FDE 没有活着的预览端口」', async () => {
     wrapper = mountPanel({ items: [] });
+    await flushPromises();
     expect(wrapper.find('[data-test="preview-ports-empty"]').exists()).toBe(true);
     expect(wrapper.get('[data-test="preview-ports-empty"]').text()).toContain('暂无预览端口');
     wrapper.unmount();
 
     wrapper = mountPanel({ items: [], scope: 'fde', fdeName: 'alice' });
+    await flushPromises();
     expect(wrapper.get('[data-test="preview-ports-empty"]').text()).toContain('暂无预览端口');
     expect(wrapper.get('[data-test="preview-ports-panel-body"]').text()).toContain('alice 的预览端口');
   });
@@ -150,6 +159,7 @@ describe('PreviewPortsPanel · 加载中 / 空 / 失败三态', () => {
       status: 401, code: 'unauthorized', message: '未登录或会话已过期', field: null,
     };
     wrapper = mountPanel({ items: [], loaded: true, error });
+    await flushPromises();
     const alert = wrapper.get('[data-test="preview-ports-error"]');
     expect(alert.attributes('role')).toBe('alert');
     expect(alert.text()).toBe('预览端口加载失败（unauthorized）：未登录或会话已过期');
@@ -157,10 +167,11 @@ describe('PreviewPortsPanel · 加载中 / 空 / 失败三态', () => {
     expect(wrapper.find('[data-test="preview-ports-retry"]').exists()).toBe(false);
   });
 
-  it('已有列表时失败：旧列表保留 + 错误条（不闪成空白）', () => {
+  it('已有列表时失败：旧列表保留 + 错误条（不闪成空白）', async () => {
     const error: PreviewApiError = { status: 500, code: 'internal_error', message: 'boom', field: null };
     wrapper = mountPanel({ error });
-    expect(wrapper.findAll('[data-test="preview-port-row"]')).toHaveLength(3);
+    await flushPromises();
+    expect(wrapper.findAll('[data-test="preview-port-row"], .preview-port-row')).toHaveLength(3);
     expect(wrapper.get('[data-test="preview-ports-error"]').text()).toContain('（internal_error）：boom');
   });
 });
@@ -170,6 +181,7 @@ describe('PreviewPortsPanel · 复制与兜底反馈', () => {
     const writeText = vi.fn(async () => undefined);
     stubClipboard(writeText);
     wrapper = mountPanel();
+    await flushPromises();
     await wrapper.findAll('[data-test="preview-port-hostname"]')[1].trigger('click');
     expect(writeText).toHaveBeenCalledWith('http://alice-p-22001.fde.erix.vip:8090');
     expect(wrapper.get('[data-test="preview-port-copied"]').text()).toContain('预览地址已复制');
@@ -178,16 +190,18 @@ describe('PreviewPortsPanel · 复制与兜底反馈', () => {
   it('剪贴板不可用时显示「复制失败：」而不是静默', async () => {
     stubClipboard(async () => { throw new Error('Document is not focused'); });
     wrapper = mountPanel();
+    await flushPromises();
     await wrapper.findAll('[data-test="preview-port-hostname"]')[0].trigger('click');
     expect(wrapper.get('[data-test="preview-port-copy-error"]').text()).toContain('复制失败：');
     expect(wrapper.get('[data-test="preview-port-copy-error"]').text()).toContain('Document is not focused');
   });
 
-  it('签票失败显示错误码与原文；弹窗被拦给出带票的兜底链接（href 里带 ticket）', () => {
+  it('签票失败显示错误码与原文；弹窗被拦给出带票的兜底链接（href 里带 ticket）', async () => {
     wrapper = mountPanel({
       ticketError: { status: 429, code: 'rate_limited', message: '预览 ticket 签发过于频繁', field: null },
       popupBlockedUrl: 'http://alice-p-22000.fde.erix.vip:8090?preview_ticket=pt_x',
     });
+    await flushPromises();
     expect(wrapper.get('[data-test="preview-ticket-error"]').text())
       .toBe('签发预览通行票失败（rate_limited）：预览 ticket 签发过于频繁');
     const link = wrapper.get('[data-test="preview-popup-fallback-link"]');
@@ -196,10 +210,11 @@ describe('PreviewPortsPanel · 复制与兜底反馈', () => {
     expect(link.attributes('rel')).toBe('noopener');
   });
 
-  it('#256② 429 带 Retry-After：签票失败文案说出秒数；缺头 / 非有限数退到不带秒数的文案（不演 undefined/NaN）', () => {
+  it('#256② 429 带 Retry-After：签票失败文案说出秒数；缺头 / 非有限数退到不带秒数的文案（不演 undefined/NaN）', async () => {
     wrapper = mountPanel({
       ticketError: { status: 429, code: 'rate_limited', message: '预览 ticket 签发过于频繁', field: null, retryAfter: 37 },
     });
+    await flushPromises();
     expect(wrapper.get('[data-test="preview-ticket-error"]').text())
       .toBe('签发预览通行票失败（rate_limited）：预览 ticket 签发过于频繁（约 37 秒后可重试）');
 
@@ -207,6 +222,7 @@ describe('PreviewPortsPanel · 复制与兜底反馈', () => {
     wrapper = mountPanel({
       ticketError: { status: 429, code: 'rate_limited', message: '预览 ticket 签发过于频繁', field: null, retryAfter: null },
     });
+    await flushPromises();
     const noHeader = wrapper.get('[data-test="preview-ticket-error"]').text();
     expect(noHeader).toBe('签发预览通行票失败（rate_limited）：预览 ticket 签发过于频繁');
     expect(noHeader).not.toContain('秒后可重试');
@@ -216,6 +232,7 @@ describe('PreviewPortsPanel · 复制与兜底反馈', () => {
       // 头不可解 / 脏数据：仍不许把 NaN 演给用户
       ticketError: { status: 429, code: 'rate_limited', message: 'x', field: null, retryAfter: Number.NaN },
     });
+    await flushPromises();
     const dirty = wrapper.get('[data-test="preview-ticket-error"]').text();
     expect(dirty).not.toContain('NaN');
     expect(dirty).not.toContain('undefined');
@@ -223,6 +240,7 @@ describe('PreviewPortsPanel · 复制与兜底反馈', () => {
 
   it('切到 English：表头与 state 文案同步换英文（仍不出现 healthy/running）', async () => {
     wrapper = mountPanel();
+    await flushPromises();
     setLocale('en');
     await wrapper.vm.$nextTick();
     expect(wrapper.findAll('thead th').map((th) => th.text()))
@@ -243,11 +261,11 @@ describe('PreviewPortsPanel · 侧栏紧凑形态（variant=list，issue #308）
   const listPanel = (overrides: Partial<Record<string, unknown>> = {}) =>
     mountPanel({ variant: 'list', ...overrides });
 
-  it('渲染紧凑行而不是 4 列表格：端口 + 短状态（完整口径在 title/aria-label）+ 可截断 hostname', () => {
+  it('渲染紧凑行而不是 4 列表格：端口 + 短状态（完整口径在 title/aria-label）+ 可截断 hostname', async () => {
     wrapper = listPanel();
     expect(wrapper.find('[data-test="preview-ports-table"]').exists()).toBe(false);
     expect(wrapper.get('[data-test="preview-ports-list"]').element.tagName.toLowerCase()).toBe('ul');
-    const rows = wrapper.findAll('[data-test="preview-port-row"]');
+    const rows = wrapper.findAll('[data-test="preview-port-row"], .preview-port-row');
     expect(rows).toHaveLength(3);
     expect(rows.map((row) => row.get('[data-test="preview-port-value"]').text()))
       .toEqual(['22000', '22001', '22002']);
@@ -266,7 +284,7 @@ describe('PreviewPortsPanel · 侧栏紧凑形态（variant=list，issue #308）
     const hostname = rows[0].get('[data-test="preview-port-hostname"]');
     expect(hostname.text()).toBe('alice-p-22000.fde.erix.vip');
     expect(hostname.attributes('title')).toBe('http://alice-p-22000.fde.erix.vip:8090（点击复制完整地址）');
-    expect(hostname.classes()).toEqual(expect.arrayContaining(['truncate', 'min-w-0', 'w-full']));
+    expect(hostname.classes()).toContain('port-hostname');
     // 紧凑形态不重复区块标题（折叠条已经写了「预览端口」），也没有任何操作按钮
     expect(wrapper.text()).not.toContain('预览端口');
     expect(wrapper.find('[data-test="preview-ports-retry"]').exists()).toBe(false);
@@ -288,7 +306,7 @@ describe('PreviewPortsPanel · 侧栏紧凑形态（variant=list，issue #308）
     const busy = wrapper.findAll('[data-test="preview-port-open"]');
     expect(busy.map((b) => (b.element as HTMLButtonElement).disabled)).toEqual([true, true, true]);
     expect(busy[1].attributes('title')).toBe('签发通行票…');
-    expect(busy[1].find('svg.animate-spin').exists()).toBe(true);
+    expect(busy[1].find('.is-loading svg').exists()).toBe(true);
     expect(busy[0].attributes('title')).toBe('打开预览');
   });
 
@@ -325,14 +343,16 @@ describe('PreviewPortsPanel · 侧栏紧凑形态（variant=list，issue #308）
 // 批量链是探测时代（分不清哪个口有服务 ⇒ 10 标签盲开）的遗产；Cookie 事实的读者是 agent。
 // ---------------------------------------------------------------------------
 describe('PreviewPortsPanel · 历史动作退场（#247 批量 / #286 Cookie 告知）', () => {
-  it('不再渲染「打开全部预览」与重试按钮（列表自动保鲜，盲开无存在理由）', () => {
+  it('不再渲染「打开全部预览」与重试按钮（列表自动保鲜，盲开无存在理由）', async () => {
     wrapper = mountPanel();
+    await flushPromises();
     expect(wrapper.find('[data-test="preview-open-all"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="preview-ports-retry"]').exists()).toBe(false);
   });
 
-  it('#286 Cookie 告知已退出人侧界面（技术事实只留在 agent 侧 ~/AGENTS.md，不进 UI）', () => {
+  it('#286 Cookie 告知已退出人侧界面（技术事实只留在 agent 侧 ~/AGENTS.md，不进 UI）', async () => {
     wrapper = mountPanel();
+    await flushPromises();
     expect(wrapper.find('[data-test="preview-cookie-notice"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Cookie');
   });
@@ -355,6 +375,7 @@ describe('观测层注解（observed）', () => {
     wrapper = mountPanel({
       items: [portItem('a', 22000, { observed: OBS_SHOP }), portItem('b', 22001)],
     });
+    await flushPromises();
     const lines = wrapper.findAll('[data-test="preview-port-observed"]');
     expect(lines).toHaveLength(1);
     expect(lines[0].text()).toContain('~/projects/shop');
@@ -363,10 +384,11 @@ describe('观测层注解（observed）', () => {
     expect(lines[0].attributes('title')).toContain('node vite.js');
   });
 
-  it('同目录 ≥2 个监听 ⇒ 顶部警告点名两个端口（两个分支各占一口的现场）', () => {
+  it('同目录 ≥2 个监听 ⇒ 顶部警告点名两个端口（两个分支各占一口的现场）', async () => {
     wrapper = mountPanel({
       items: [portItem('a', 22000, { observed: OBS_SHOP }), portItem('b', 22001, { observed: OBS_SHOP_FEAT }), portItem('c', 22002, { observed: OBS_OTHER })],
     });
+    await flushPromises();
     const warn = wrapper.get('[data-test="preview-observed-duplicates"]').text();
     expect(warn).toContain('~/projects/shop');
     expect(warn).toContain('22000');
@@ -374,7 +396,7 @@ describe('观测层注解（observed）', () => {
     expect(warn).not.toContain('~/projects/other'); // 单实例目录不进警告
   });
 
-  it('分组模式 ⇒ 按项目根分组：当前目录组排最前挂「当前目录」徽章，其余目录各成一组，池内未用收进「空闲」组', () => {
+  it('分组模式 ⇒ 按项目根分组：当前目录组排最前挂「当前目录」徽章，其余目录各成一组，池内未用收进「空闲」组', async () => {
     wrapper = mountPanel({
       items: [
         portItem('a', 22000, { observed: null }),
@@ -385,63 +407,68 @@ describe('观测层注解（observed）', () => {
       variant: 'list',
       groupByProject: true,
     });
+    await flushPromises();
     const headers = wrapper.findAll('[data-test="preview-port-group-header"]').map((h) => h.text());
     expect(headers).toEqual(['shop当前目录', 'other', '空闲（1）']);
     expect(wrapper.find('[data-test="preview-port-group-current"]').exists()).toBe(true);
-    const rows = wrapper.findAll('[data-test="preview-port-row"]');
+    const rows = wrapper.findAll('[data-test="preview-port-row"], .preview-port-row');
     expect(rows.map((r) => r.get('[data-test="preview-port-value"]').text())).toEqual(['22002', '22001', '22000']);
     // 行文案：目录由分组头承担 ⇒ 行内只报 cmd/分支（能看出是 vite 还是后端）
     expect(rows[0].get('[data-test="preview-port-observed"]').text()).toContain('node vite.js');
     expect(rows[0].get('[data-test="preview-port-observed"]').text()).not.toContain('~/projects/shop');
   });
 
-  it('当前目录无在用端口 ⇒ 不挂「当前目录」徽章、不谎报；空闲组照旧（池内未用 ≠ 无地址）', () => {
+  it('当前目录无在用端口 ⇒ 不挂「当前目录」徽章、不谎报；空闲组照旧（池内未用 ≠ 无地址）', async () => {
     wrapper = mountPanel({
       items: [portItem('a', 22000, { observed: null }), portItem('b', 22001, { observed: OBS_OTHER })],
       currentCwd: '~/projects/shop',
       variant: 'list',
       groupByProject: true,
     });
+    await flushPromises();
     expect(wrapper.find('[data-test="preview-port-group-current"]').exists()).toBe(false);
     const headers = wrapper.findAll('[data-test="preview-port-group-header"]').map((h) => h.text());
     expect(headers).toEqual(['other', '空闲（1）']);
   });
 
-  it('旧后端（DTO 无 observed 键）⇒ **不过滤**，全量展示与改动前同形', () => {
+  it('旧后端（DTO 无 observed 键）⇒ **不过滤**，全量展示与改动前同形', async () => {
     wrapper = mountPanel({
       items: [portItem('a', 22000), portItem('b', 22001)], // 无 observed 键 = 未跑 0022
       currentCwd: '~/projects/shop',
       variant: 'list',
     });
-    expect(wrapper.findAll('[data-test="preview-port-row"]')).toHaveLength(2);
+    await flushPromises();
+    expect(wrapper.findAll('[data-test="preview-port-row"], .preview-port-row')).toHaveLength(2);
     expect(wrapper.find('[data-test="preview-ports-others-toggle"]').exists()).toBe(false);
   });
 
-  it('不传 currentCwd（管理台代看）⇒ 不过滤，只做「有观测优先」，组内维持 port ASC', () => {
+  it('不传 currentCwd（管理台代看）⇒ 不过滤，只做「有观测优先」，组内维持 port ASC', async () => {
     wrapper = mountPanel({
       items: [portItem('a', 22000), portItem('b', 22001, { observed: OBS_OTHER }), portItem('c', 22002)],
       scope: 'fde',
       fdeName: 'bob',
     });
-    const rows = wrapper.findAll('[data-test="preview-port-row"]');
+    await flushPromises();
+    const rows = wrapper.findAll('[data-test="preview-port-row"], .preview-port-row');
     expect(rows.map((r) => r.get('[data-test="preview-port-value"]').text())).toEqual(['22001', '22000', '22002']);
     expect(wrapper.findAll('[data-test="preview-port-observed-here"]')).toHaveLength(0);
   });
 
-  it('子目录归并：observed 在 ~/projects/shop/frontend 的行归进 shop 组并挂「当前目录」徽章', () => {
+  it('子目录归并：observed 在 ~/projects/shop/frontend 的行归进 shop 组并挂「当前目录」徽章', async () => {
     wrapper = mountPanel({
       items: [portItem('a', 22000, { observed: { ...OBS_SHOP, cwd: '~/projects/shop/frontend' } })],
       currentCwd: '~/projects/shop',
       variant: 'list',
       groupByProject: true,
     });
+    await flushPromises();
     const headers = wrapper.findAll('[data-test="preview-port-group-header"]');
     expect(headers).toHaveLength(1);
     expect(headers[0].text()).toContain('shop');
     expect(headers[0].find('[data-test="preview-port-group-current"]').exists()).toBe(true);
   });
 
-  it('端口池外的观测合成行（url=null）：可识别在用，但无打开/复制按钮，只有说明句', () => {
+  it('端口池外的观测合成行（url=null）：可识别在用，但无打开/复制按钮，只有说明句', async () => {
     wrapper = mountPanel({
       items: [portItem('observed:5173', 5173, {
         hostname: null, url: null, state: 'observed', observed: { ...OBS_SHOP, cwd: '~/projects/shop' },
@@ -450,24 +477,27 @@ describe('观测层注解（observed）', () => {
       variant: 'list',
       groupByProject: true,
     });
+    await flushPromises();
     expect(wrapper.find("[data-test=\"preview-port-group-current\"]").exists()).toBe(true);
-    const row = wrapper.get('[data-test="preview-port-row"]');
+    const row = wrapper.get('[data-test="preview-port-row"], .preview-port-row');
     expect(row.find('[data-test="preview-port-open"]').exists()).toBe(false);
     expect(row.find('[data-test="preview-port-hostname"]').exists()).toBe(false);
     expect(row.get('[data-test="preview-port-unrouted"]').text()).toContain('端口');
   });
 
-  it('双面板分工（用户裁定）：端口池面板只收 url 行；池外合成行归进程面板 ⇒ 池面板永不见「未知状态」', () => {
+  it('双面板分工（用户裁定）：端口池面板只收 url 行；池外合成行归进程面板 ⇒ 池面板永不见「未知状态」', async () => {
     const all = [
       portItem('a', 22000, { observed: OBS_OTHER }),
       portItem('observed:5173', 5173, { hostname: null, url: null, state: 'observed', observed: OBS_SHOP }),
     ];
     // 池面板：SidebarPanel 传的是 poolItems（url 非空）——这里模拟其子集
     wrapper = mountPanel({ items: all.filter((i) => i.url), currentCwd: '~/projects/shop', variant: 'list', groupByProject: true });
+    await flushPromises();
     expect(wrapper.text()).not.toContain('5173');
     expect(wrapper.text()).not.toContain('未知状态');
     // 进程面板：groupByProject 过滤后两行都在，各自归组；合成行仍无按钮只有说明句
     wrapper = mountPanel({ items: all, currentCwd: '~/projects/shop', variant: 'list', groupByProject: true });
+    await flushPromises();
     const headers = wrapper.findAll('[data-test="preview-port-group-header"]').map((h) => h.text());
     expect(headers).toEqual(['shop当前目录', 'other']);
     const unrouted = wrapper.get('[data-test="preview-port-unrouted"]');

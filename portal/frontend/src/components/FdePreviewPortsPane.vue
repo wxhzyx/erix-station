@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton, ElInput } from "element-plus";
 // 管理台 · 某个 FDE 的预览端口面板（#246 交付② 单 B）：列表 + **改块**（搬迁）入口。
 // 改块的两条硬要求（工单红线）：
 //   ① **先二次确认，确认之前不得发出 POST**（旧段 10 条预览域名会当场失效、FDE 手里的链接会断，
@@ -8,12 +9,15 @@
 //      不吞成「操作失败」；400 `validation_failed`（details.field='block_start'）指到输入框。
 // 确认条是内联的（不是第二层 modal）：外层 FDE 编辑框本身已是 ModalShell，套两层会让 Esc
 // 同时触发内外两个 close（ModalShell 不在子层阻止冒泡）⇒ 一次 Esc 连编辑框一起关掉。
-import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue';
-import { useI18n } from 'vue-i18n';
-import PreviewPortsPanel from './PreviewPortsPanel.vue';
-import { requestBlockMove, usePreviewPorts } from '../composables/usePreviewPorts';
-import { useAdminStore } from '../stores/admin';
-import { classifyBlock } from '../lib/previewPoolUsage';
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import PreviewPortsPanel from "./PreviewPortsPanel.vue";
+import {
+  requestBlockMove,
+  usePreviewPorts,
+} from "../composables/usePreviewPorts";
+import { useAdminStore } from "../stores/admin";
+import { classifyBlock } from "../lib/previewPoolUsage";
 import {
   PREVIEW_BLOCK_START_MAX,
   PREVIEW_BLOCK_START_MIN,
@@ -24,45 +28,53 @@ import {
   previewBlockEnd,
   type PreviewApiError,
   type PreviewBlockMoveResult,
-} from '../lib/previewPorts';
+} from "../lib/previewPorts";
 
 const props = defineProps<{ fdeName: string }>();
 
 const { t } = useI18n();
 const ports = usePreviewPorts({ fdeName: () => props.fdeName });
 
-const blockStart = ref('');
+const blockStart = ref("");
 /** 待确认的块起点：非 null = 确认条已弹出（此时仍未发出任何 POST）。 */
 const pendingStart = ref<number | null>(null);
 const moving = ref(false);
 const moveError = ref<PreviewApiError | null>(null);
-const fieldError = ref('');
+const fieldError = ref("");
 const result = ref<PreviewBlockMoveResult | null>(null);
 /** 确认/结果文案要点名的旧段（发请求前抓一份，搬迁后列表就换成新段了）。 */
-const fromBlock = ref<string>('');
-const confirmButton = useTemplateRef<HTMLButtonElement>('confirmButton');
+const fromBlock = ref<string>("");
+const confirmButton =
+  useTemplateRef<InstanceType<typeof ElButton>>("confirmButton");
 
 const currentBlock = computed(() => formatBlockRange(ports.blockRange.value));
 const portCount = computed(() => ports.items.value.length);
-const isBlockTaken = computed(() => moveError.value?.code === 'preview_port_block_taken');
+const isBlockTaken = computed(
+  () => moveError.value?.code === "preview_port_block_taken",
+);
 
 // Allocation checks stay beside the move form; the runtime overview does not supply allocation evidence.
 const admin = useAdminStore();
 const usageSnapshot = computed(() => admin.previewUsage);
 const typedStart = computed(() => parseBlockStart(blockStart.value));
-const typedOccupancy = computed(() => classifyBlock(usageSnapshot.value, typedStart.value));
+const typedOccupancy = computed(() =>
+  classifyBlock(usageSnapshot.value, typedStart.value),
+);
 
 /** 「这一段现在空不空 / 被谁占」——快照里**不知道**就直说不知道（列表是截断的，不猜）。 */
 function occupancyText(): string {
   const occupancy = typedOccupancy.value;
-  if (occupancy.kind === 'free') return t('previewPorts.admin.occupancyFree');
-  if (occupancy.kind === 'unknown') return t('previewPorts.admin.occupancyUnknown');
-  const names = occupancy.fdeNames.join(', ');
+  if (occupancy.kind === "free") return t("previewPorts.admin.occupancyFree");
+  if (occupancy.kind === "unknown")
+    return t("previewPorts.admin.occupancyUnknown");
+  const names = occupancy.fdeNames.join(", ");
   const count = occupancy.occupiedCount;
-  if (names && count !== null) return t('previewPorts.admin.occupancyOccupied', { names, count });
-  if (names) return t('previewPorts.admin.occupancyOccupiedNoCount', { names });
-  if (count !== null) return t('previewPorts.admin.occupancyOccupiedNoNames', { count });
-  return t('previewPorts.admin.occupancyOccupiedBare');
+  if (names && count !== null)
+    return t("previewPorts.admin.occupancyOccupied", { names, count });
+  if (names) return t("previewPorts.admin.occupancyOccupiedNoCount", { names });
+  if (count !== null)
+    return t("previewPorts.admin.occupancyOccupiedNoNames", { count });
+  return t("previewPorts.admin.occupancyOccupiedBare");
 }
 
 /** 新段标签（起点 + 块大小，不写死 +9）。 */
@@ -74,30 +86,35 @@ async function reload() {
   await ports.load();
 }
 
-onMounted(() => { void reload(); });
-watch(() => props.fdeName, () => {
-  blockStart.value = '';
-  pendingStart.value = null;
-  moveError.value = null;
-  fieldError.value = '';
-  result.value = null;
+onMounted(() => {
   void reload();
 });
+watch(
+  () => props.fdeName,
+  () => {
+    blockStart.value = "";
+    pendingStart.value = null;
+    moveError.value = null;
+    fieldError.value = "";
+    result.value = null;
+    void reload();
+  },
+);
 
 /** 「改块…」：只做本地整数校验 + 弹确认，**不发请求**（未确认不得 POST）。 */
 async function requestMove() {
   moveError.value = null;
-  fieldError.value = '';
+  fieldError.value = "";
   result.value = null;
   const parsed = parseBlockStart(blockStart.value);
   if (parsed === null) {
-    fieldError.value = t('previewPorts.admin.notInteger');
+    fieldError.value = t("previewPorts.admin.notInteger");
     return;
   }
   fromBlock.value = currentBlock.value;
   pendingStart.value = parsed;
   await nextTick();
-  confirmButton.value?.focus();
+  confirmButton.value?.$el.focus();
 }
 
 function cancelMove() {
@@ -110,7 +127,7 @@ async function confirmMove() {
   if (start === null || moving.value) return;
   moving.value = true;
   moveError.value = null;
-  fieldError.value = '';
+  fieldError.value = "";
   try {
     const outcome = await requestBlockMove(props.fdeName, start);
     if (outcome.ok) {
@@ -121,8 +138,13 @@ async function confirmMove() {
       const error = outcome.error;
       moveError.value = error;
       pendingStart.value = null; // 让管理员能直接改起点重试（不锁在确认条里）
-      if (error.code === 'validation_failed' && (error.field === null || error.field === 'block_start')) {
-        fieldError.value = t('previewPorts.admin.fieldErrorBlockStart', { message: error.message });
+      if (
+        error.code === "validation_failed" &&
+        (error.field === null || error.field === "block_start")
+      ) {
+        fieldError.value = t("previewPorts.admin.fieldErrorBlockStart", {
+          message: error.message,
+        });
       }
     }
   } finally {
@@ -131,9 +153,9 @@ async function confirmMove() {
 }
 
 function resultText(moved: PreviewBlockMoveResult): string {
-  return t('previewPorts.admin.moved', {
+  return t("previewPorts.admin.moved", {
     // 旧段在发请求前抓的（搬完列表就换成新段了）；本来就没有活段时用「—」占位
-    oldBlock: fromBlock.value || '—',
+    oldBlock: fromBlock.value || "—",
     newBlock: `${moved.block_start}–${moved.block_end}`,
     released: moved.released_allocations,
     revoked: moved.revoked_grants,
@@ -143,7 +165,10 @@ function resultText(moved: PreviewBlockMoveResult): string {
 
 /** 409：错误条 = 「改块失败（码）」+ 服务端 message 全文（里面有被占的段与号）。 */
 function errorText(error: PreviewApiError): string {
-  return t('previewPorts.admin.moveFailed', { code: error.code, message: error.message });
+  return t("previewPorts.admin.moveFailed", {
+    code: error.code,
+    message: error.message,
+  });
 }
 </script>
 
@@ -162,21 +187,41 @@ function errorText(error: PreviewApiError): string {
       @open="(item) => ports.openPreview(item)"
     />
 
-    <section data-test="block-move" class="rounded-lg border border-amber-300/60 bg-amber-50/60 p-3">
-      <h4 class="text-sm font-semibold text-amber-900">{{ t('previewPorts.admin.moveTitle') }}</h4>
+    <section
+      data-test="block-move"
+      class="rounded-lg border border-amber-300/60 bg-amber-50/60 p-3"
+    >
+      <h4 class="text-sm font-semibold text-amber-900">
+        {{ t("previewPorts.admin.moveTitle") }}
+      </h4>
       <p data-test="block-current-range" class="mt-1 text-xs text-black/65">
-        {{ portCount > 0
-          ? t('previewPorts.admin.currentBlock', { block: currentBlock, count: portCount })
-          : t('previewPorts.admin.currentBlockNone') }}
+        {{
+          portCount > 0
+            ? t("previewPorts.admin.currentBlock", {
+                block: currentBlock,
+                count: portCount,
+              })
+            : t("previewPorts.admin.currentBlockNone")
+        }}
       </p>
-      <p class="mt-1 text-xs text-black/55">{{ t('previewPorts.admin.blockHint') }}</p>
-      <button type="button" class="mt-2 text-sm underline" :disabled="admin.previewUsageLoading" @click="admin.loadPreviewUsage()">{{ t('previewPorts.admin.usageRefLink') }}</button>
-      <p v-if="admin.previewUsageErr" class="syserr" role="alert">{{ admin.previewUsageErr }}</p>
+      <p class="mt-1 text-xs text-black/55">
+        {{ t("previewPorts.admin.blockHint") }}
+      </p>
+      <ElButton
+        type="default"
+        native-type="button"
+        :disabled="admin.previewUsageLoading"
+        @click="admin.loadPreviewUsage()"
+        >{{ t("previewPorts.admin.usageRefLink") }}</ElButton
+      >
+      <p v-if="admin.previewUsageErr" class="syserr" role="alert">
+        {{ admin.previewUsageErr }}
+      </p>
 
       <div class="mt-2 flex flex-wrap items-end gap-2">
         <label class="flex min-w-40 flex-col gap-1 text-xs text-black/60">
-          {{ t('previewPorts.admin.blockStartLabel') }}
-          <input
+          {{ t("previewPorts.admin.blockStartLabel") }}
+          <ElInput
             v-model="blockStart"
             data-test="block-start-input"
             type="number"
@@ -187,18 +232,22 @@ function errorText(error: PreviewApiError): string {
             :placeholder="t('previewPorts.admin.blockStartPlaceholder')"
             :aria-invalid="fieldError ? 'true' : undefined"
             :aria-describedby="fieldError ? 'block-start-error' : undefined"
-            class="rounded-md border border-black/20 px-2 py-1 text-sm text-black disabled:bg-black/5"
             :disabled="moving"
             @keydown.enter.prevent="requestMove"
-          >
+          />
         </label>
-        <button
-          type="button"
+        <ElButton
+          type="primary"
+          native-type="button"
           data-test="open-block-move"
-          class="rounded-md bg-brand px-2.5 py-1.5 text-sm text-white hover:bg-brand-hover disabled:opacity-50"
           :disabled="moving || pendingStart !== null"
           @click="requestMove"
-        >{{ moving ? t('previewPorts.admin.moving') : t('previewPorts.admin.moveAction') }}</button>
+          >{{
+            moving
+              ? t("previewPorts.admin.moving")
+              : t("previewPorts.admin.moveAction")
+          }}</ElButton
+        >
       </div>
 
       <p
@@ -207,7 +256,9 @@ function errorText(error: PreviewApiError): string {
         data-test="block-start-field-error"
         class="syserr mt-1 text-xs"
         role="alert"
-      >{{ fieldError }}</p>
+      >
+        {{ fieldError }}
+      </p>
       <!-- issue #350：只读提示——这个段在**最近一次**总览里空不空 / 被谁占（没看过总览就不显示）。
            它绝不改写上面的输入框，也绝不自动提交（红线）。 -->
       <p
@@ -215,13 +266,17 @@ function errorText(error: PreviewApiError): string {
         data-test="block-occupancy-hint"
         class="mt-1 text-xs text-black/70"
         role="status"
-      >{{ t('previewPorts.admin.occupancyTitle') }} {{ occupancyText() }}</p>
+      >
+        {{ t("previewPorts.admin.occupancyTitle") }} {{ occupancyText() }}
+      </p>
       <p
         v-else-if="pendingStart !== null && !isAlignedBlockStart(pendingStart)"
         data-test="block-start-align-hint"
         class="mt-1 text-xs text-amber-800"
         role="status"
-      >{{ t('previewPorts.admin.alignHint') }}</p>
+      >
+        {{ t("previewPorts.admin.alignHint") }}
+      </p>
 
       <!-- 二次确认：弹出即说明旧域名会立刻失效；此时仍未发出任何 POST -->
       <div
@@ -231,46 +286,65 @@ function errorText(error: PreviewApiError): string {
         aria-labelledby="block-move-confirm-title"
         class="mt-2 rounded-md border border-red-300 bg-white p-2.5"
       >
-        <h5 id="block-move-confirm-title" class="text-sm font-semibold text-red-800">
-          {{ t('previewPorts.admin.confirmTitle') }}
+        <h5
+          id="block-move-confirm-title"
+          class="text-sm font-semibold text-red-800"
+        >
+          {{ t("previewPorts.admin.confirmTitle") }}
         </h5>
         <p class="mt-1 text-sm">
-          {{ portCount > 0
-            ? t('previewPorts.admin.confirmBody', {
-              fde: props.fdeName,
-              oldBlock: fromBlock,
-              newBlock: newBlockLabel(pendingStart),
-              count: portCount,
-            })
-            : t('previewPorts.admin.confirmBodyNoBlock', {
-              fde: props.fdeName,
-              newBlock: newBlockLabel(pendingStart),
-            }) }}
+          {{
+            portCount > 0
+              ? t("previewPorts.admin.confirmBody", {
+                  fde: props.fdeName,
+                  oldBlock: fromBlock,
+                  newBlock: newBlockLabel(pendingStart),
+                  count: portCount,
+                })
+              : t("previewPorts.admin.confirmBodyNoBlock", {
+                  fde: props.fdeName,
+                  newBlock: newBlockLabel(pendingStart),
+                })
+          }}
         </p>
-        <p class="mt-1 text-sm font-medium text-red-800">{{ t('previewPorts.admin.confirmWarning') }}</p>
+        <p class="mt-1 text-sm font-medium text-red-800">
+          {{ t("previewPorts.admin.confirmWarning") }}
+        </p>
         <div class="mt-2 flex gap-2">
-          <button
+          <ElButton
+            type="danger"
             ref="confirmButton"
-            type="button"
+            native-type="button"
             data-test="confirm-block-move"
             :disabled="moving"
-            class="rounded-md bg-red-700 px-2.5 py-1 text-sm text-white hover:bg-red-800 disabled:opacity-50"
             @click="confirmMove"
-          >{{ t('previewPorts.admin.confirmOk') }}</button>
-          <button
-            type="button"
+            >{{ t("previewPorts.admin.confirmOk") }}</ElButton
+          >
+          <ElButton
+            type="default"
+            native-type="button"
             data-test="cancel-block-move"
-            class="rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5"
             @click="cancelMove"
-          >{{ t('common.cancel') }}</button>
+            >{{ t("common.cancel") }}</ElButton
+          >
         </div>
       </div>
 
-      <p v-if="moveError" data-test="block-move-error" class="syserr mt-2 text-sm" role="alert">
+      <p
+        v-if="moveError"
+        data-test="block-move-error"
+        class="syserr mt-2 text-sm"
+        role="alert"
+      >
         {{ errorText(moveError) }}
       </p>
-      <p v-if="isBlockTaken" data-test="block-move-taken-hint" class="mt-1 text-xs text-amber-900" role="status">
-        {{ t('previewPorts.admin.blockTakenHint') }}
+      <p
+        v-if="isBlockTaken"
+        data-test="block-move-taken-hint"
+        class="mt-1 text-xs text-amber-900"
+        role="status"
+      >
+        {{ t("previewPorts.admin.blockTakenHint") }}
       </p>
 
       <template v-if="result">
@@ -278,11 +352,25 @@ function errorText(error: PreviewApiError): string {
           data-test="block-move-result"
           class="mt-2 text-sm text-green-800"
           role="status"
-        >{{ result.changed
-          ? resultText(result)
-          : t('previewPorts.admin.movedNoop', { block: newBlockLabel(result.block_start) }) }}</p>
-        <p v-if="result.changed" data-test="block-move-ports" class="mt-1 break-all text-xs text-black/60">
-          {{ t('previewPorts.admin.movedPorts', { ports: result.ports.join(', ') }) }}
+        >
+          {{
+            result.changed
+              ? resultText(result)
+              : t("previewPorts.admin.movedNoop", {
+                  block: newBlockLabel(result.block_start),
+                })
+          }}
+        </p>
+        <p
+          v-if="result.changed"
+          data-test="block-move-ports"
+          class="mt-1 break-all text-xs text-black/60"
+        >
+          {{
+            t("previewPorts.admin.movedPorts", {
+              ports: result.ports.join(", "),
+            })
+          }}
         </p>
       </template>
     </section>
