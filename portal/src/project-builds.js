@@ -117,7 +117,7 @@ export async function saveBuildArtifact(pool, config, userId, id, token, stream)
     await fs.link(tmp, dest);
     const row = (await pool.query(`UPDATE project_builds SET status='succeeded',finished_at=now(),lease_hash=NULL,
       artifact_name=$4,artifact_size=$5,artifact_sha256=$6 WHERE id=$1 AND requester_id=$2 AND lease_hash=$3 AND status='running' RETURNING id`,
-      [id, userId, digest(token), path.posix.basename(job.delivery_target.build.output), size, hash.digest('hex')])).rows[0];
+      [id, userId, digest(token), `${job.repo_name}-${job.source_sha.slice(0,8)}-${id.slice(0,8)}${path.posix.extname(job.delivery_target.build.output)}`, size, hash.digest('hex')])).rows[0];
     if (!row) { await fs.unlink(dest); throw failure('build_lease_lost', '构建租约已失效'); }
     return { ok: true };
   } finally { await handle?.close(); await fs.unlink(tmp).catch(() => {}); }
