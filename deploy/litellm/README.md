@@ -75,3 +75,49 @@ key (for example `sk****ke`) but return `api_base` unmasked.
 **Do not change `LITELLM_SALT_KEY` after creating models or credentials.**
 LiteLLM uses it to encrypt stored credential values; changing it can make
 existing encrypted values unusable.
+
+## FDE Qwen output policy (0.1.54)
+
+`fde_quota.py` applies a bounded output policy only after validating the personal
+FDE key, and only for `fde-station-qwen3.8-flash-next`. The mode comes from the
+gateway key's trusted metadata, never request metadata. Other teams, aliases,
+credentials and daily limits retain their existing behavior.
+
+* Chat: `chat_template_kwargs.enable_thinking=false`, with the Qwen3.8 instruct
+  defaults `temperature=0.7`, `top_p=0.8`, `presence_penalty=1.5`.
+* Work (including legacy keys without mode): reasoning stays available, but
+  `thinking_token_budget=min(1024, max_tokens // 4)`. Very small requests below
+  128 output tokens use direct output. Explicit non-thinking and the router's
+  image defaults are retained.
+* `max_tokens` and quota reservation/settlement are unchanged. Request-level
+  duplicate extensions in `extra_body` cannot override the controlled parameters.
+
+Root-cause reproduction on the deployed Qwen3.8/vLLM 0.30.0: a request for 20
+numbered recommendations, sent directly to vLLM, consumed all 4096 completion
+tokens as reasoning (`finish_reason=length`, zero content). This bypassed LiteLLM
+and the portal. Raising the total limit alone did not reliably fix it. vLLM's
+separate reasoning budget produced content through the existing router; the
+instruct profile returned all 20 items with 383 completion tokens in 3.7 seconds
+through the personal LiteLLM key. These are observed samples, not latency guarantees.
+
+References: [Qwen3.8 model card](https://huggingface.co/Qwen/Qwen3.8-Flash-Next#instruct-or-non-thinking-mode),
+[vLLM thinking budget](https://docs.vllm.ai/en/stable/features/reasoning_outputs/#thinking-budget-control).
+Do not substitute `include_reasoning=false`: that hides reasoning without limiting
+its generation, so it does not solve output-budget exhaustion.
+
+Deployment targets the existing persistent callback mount, not the model weights
+or shared router. Compare the live callback with the expected baseline, back up
+the callback and SQLite ledger, run the tests below in an isolated directory with
+the installed LiteLLM image, replace the mounted file in place, then gracefully
+restart the gateway. Check readiness, unchanged daily limits/history, and real
+chat/work responses. Restore the previous callback and restart if readiness or
+behavior fails. Do not reset the ledger, model IDs or personal keys.
+
+```sh
+FDE_QUOTA_ENABLED=0 LITELLM_LOCAL_MODEL_COST_MAP=True \
+  python -m unittest -v test_fde_quota test_qwen_policy
+```
+
+Post-deployment acceptance also covered a 6920-character input, a follow-up in
+the same conversation, and a work run performing a read-only calculation tool.
+Both modes emitted content before completion and retained per-user accounting.

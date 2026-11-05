@@ -19,6 +19,7 @@ from litellm.integrations.custom_logger import CustomLogger
 
 DEFAULT_LIMIT = 2_000_000
 MODEL = "fde-station-deepseek-flash"
+QWEN_MODEL = "fde-station-qwen3.8-flash-next"
 TEAM = os.environ.get("FDE_QUOTA_TEAM_ID", "")
 # Trusted deployment contract: this FDE alias has a 131072-token context window.
 # Reserve the full window for image requests instead of guessing visual tokens
@@ -146,6 +147,42 @@ def prompt_upper_bound(data):
     return bound
 
 
+def apply_qwen_output_policy(data, mode, output_limit):
+    """Only called after trusted FDE key validation. Never raise the output limit.
+
+    Qwen's reasoning tokens share max_tokens with its answer. Chat uses the
+    official instruct settings; work reserves at least 3/4 for answer/tool calls.
+    Flatten only our controlled extensions so extra_body cannot shadow them.
+    """
+    if data.get("model") != QWEN_MODEL:
+        return
+    extra = data.get("extra_body")
+    if extra is None:
+        extra = {}
+    if not isinstance(extra, dict):
+        raise HTTPException(400, "invalid extra_body")
+    template = extra.get("chat_template_kwargs", data.get("chat_template_kwargs", {}))
+    if not isinstance(template, dict):
+        raise HTTPException(400, "invalid chat_template_kwargs")
+    template = dict(template)
+    extra = dict(extra)
+    for name in ("chat_template_kwargs", "thinking_token_budget", "reasoning_effort"):
+        extra.pop(name, None)
+        data.pop(name, None)
+    if mode == "chat" or output_limit < 128:
+        template["enable_thinking"] = False
+        # Qwen3.8 model card's instruct defaults, applied only to this FDE alias.
+        for name, value in {"temperature": 0.7, "top_p": 0.8, "presence_penalty": 1.5}.items():
+            extra.pop(name, None)
+            data[name] = value
+    else:
+        data["thinking_token_budget"] = min(1024, output_limit // 4)
+    if template:
+        data["chat_template_kwargs"] = template
+    if "extra_body" in data:
+        data["extra_body"] = extra
+
+
 class FdeQuota(CustomLogger):
     def __init__(self, ledger):
         super().__init__()
@@ -175,7 +212,9 @@ class FdeQuota(CustomLogger):
         output = data.get("max_completion_tokens", data.get("max_tokens", 8192))
         if type(output) is not int or output < 1:
             raise HTTPException(400, "invalid max_tokens")
-        reservation, output = await asyncio.to_thread(self.ledger.reserve, user_id, prompt_upper_bound(data), min(output, 8192))
+        output = min(output, 8192)
+        apply_qwen_output_policy(data, metadata.get("mode"), output)
+        reservation, output = await asyncio.to_thread(self.ledger.reserve, user_id, prompt_upper_bound(data), output)
         data.pop("max_completion_tokens", None)
         data["max_tokens"] = output
         # Overwrite any client value. Log callbacks use the same per-request ID.
