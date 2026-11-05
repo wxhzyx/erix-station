@@ -3,9 +3,10 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElButton, ElCard, ElDialog, ElEmpty, ElInput, ElSelect, ElOption, ElTable, ElTableColumn, ElTag, ElTabs, ElTabPane } from 'element-plus';
 import StationShell from '../components/StationShell.vue';
+import ProjectBuildPanel from '../components/ProjectBuildPanel.vue';
 import { useAuthStore } from '../stores/auth';
 import { api } from '../api';
-type Project={id:string;name:string;owner_user_id:string;owner_login:string;owner_name:string;state:string;membership_state?:string;branch?:string;repo_url:string;last_error?:string;instructions?:string;package_name?:string};
+type Project={id:string;name:string;owner_user_id:string;owner_login:string;owner_name:string;state:string;membership_state?:string;branch?:string;repo_url:string;last_error?:string;instructions?:string;package_name?:string;delivery_target?:{type:'web'|'desktop'}};
 type Member={id:string;user_id:string;login:string;display_name:string;state:string;branch:string;last_error?:string};
 type Candidate={id:string;login:string;display_name:string};
 type GitAuthor={login:string;full_name?:string;station_login?:string;station_display_name?:string};
@@ -74,6 +75,7 @@ async function merge(){await action(async()=>{if(!review.value)return;const r=re
         <div v-if="detail.mine?.state==='invited'" class="invitation"><ElButton type="primary" :disabled="busy" @click="respond(detail.mine,'accept')">接受邀请</ElButton><ElButton :disabled="busy" @click="respond(detail.mine,'decline')">拒绝</ElButton></div>
       </ElCard>
       <ElCard v-if="detail" shadow="never"><ElTabs v-model="tab">
+        <ElTabPane v-if="detail.project.delivery_target?.type==='desktop'&&(detail.can_manage||canDevelop)" label="测试版本" name="builds"><ProjectBuildPanel :key="detail.project.id" :project-id="detail.project.id" :can-build="canDevelop"/></ElTabPane>
         <ElTabPane label="成员" name="members"><form v-if="detail.can_manage&&detail.project.state==='active'" class="invite-form" @submit.prevent="invite"><ElSelect v-model="invitee" filterable placeholder="选择已开通工位的成员" aria-label="受邀成员"><ElOption v-for="c in candidates" :key="c.id" :value="c.id" :label="`${c.display_name||c.login} · ${c.login}`" /></ElSelect><ElButton type="primary" native-type="submit" :disabled="busy||!invitee">邀请成员</ElButton></form>
           <ElTable :data="detail.members" row-key="id"><ElTableColumn label="成员" min-width="180"><template #default="{row}"><strong>{{row.display_name||row.login}}</strong><div class="muted">{{row.login}}{{row.user_id===detail.project.owner_user_id?' · 负责人':''}}</div></template></ElTableColumn><ElTableColumn prop="branch" label="个人分支" min-width="180" /><ElTableColumn label="状态" min-width="150"><template #default="{row}"><ElTag :type="row.state==='active'?'success':row.state==='failed'?'danger':'info'">{{labels[row.state]}}</ElTag><p v-if="row.last_error" class="error">{{row.last_error}}</p></template></ElTableColumn><ElTableColumn label="操作" min-width="170"><template #default="{row}"><template v-if="!['revoked','declined','revoking'].includes(row.state)&&row.user_id!==detail.project.owner_user_id"><ElButton v-if="detail.can_manage&&row.state==='active'" link :disabled="busy" @click="transfer(row as Member)">转交负责人</ElButton><ElButton v-if="detail.can_manage||row.user_id===auth.user?.id" type="danger" link :disabled="busy" @click="confirmRemoval(row as Member)">{{row.user_id===auth.user?.id?'退出':'移除'}}</ElButton></template></template></ElTableColumn></ElTable>
         </ElTabPane>

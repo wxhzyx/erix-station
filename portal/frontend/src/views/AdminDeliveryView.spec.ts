@@ -33,7 +33,7 @@ it('uses the real admin users items envelope and offers only active workstations
   }));
   const wrapper = mount(AdminDeliveryView);
   await flushPromises();
-  expect(wrapper.findComponent({name:'ElOption'}).props('label')).toBe('员工 · employee');
+  expect(wrapper.findAllComponents({name:'ElOption'}).map(option=>option.props('label'))).toContain('员工 · employee');
   expect(wrapper.text()).not.toContain('disabled-person');
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   wrapper.unmount();

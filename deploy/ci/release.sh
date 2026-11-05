@@ -42,4 +42,16 @@ sha=sys.argv[1]
 images={name:subprocess.check_output(['docker','image','inspect',f'inteva/fde-{name}:{sha}','--format','{{.Id}}'],text=True).strip() for name in ['portal','runner','proxy']}
 pathlib.Path('release-manifest.json').write_text(json.dumps({'revision':sha,'images':images},indent=2)+'\n')
 PY
+# User test builds must finish before replacing their executor containers.
+docker exec -i station-portal node --input-type=module <<'JS'
+import {loadConfig} from './portal/src/config.js';
+import {createPool} from './portal/src/db.js';
+const pool=createPool(loadConfig().databaseUrl);
+try {
+  const present=(await pool.query("SELECT to_regclass('public.project_builds') AS table_name")).rows[0].table_name;
+  if(present && (await pool.query("SELECT id FROM project_builds WHERE status IN ('queued','running') LIMIT 1")).rows.length) {
+    throw new Error('Desktop test builds are active; rerun release after they finish');
+  }
+} finally {await pool.end();}
+JS
 sudo -n /usr/local/sbin/fde-station-promote "$workspace" "$sha"

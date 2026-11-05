@@ -30,6 +30,7 @@ import { captureAndUploadArtifact } from './lib/artifacts.js';
 // 只读展示用途，不做管控（#246 不变式）；采样失败只报空数组，绝不拖死心跳。
 import { collectListeners } from './lib/listeners.js';
 import { cleanupProjectProcesses } from './lib/project-cleanup.js';
+import { executeProjectBuild } from './lib/project-build.js';
 const collaborationCleanupAcks = new Set();
 // issue #288 启动不变式：只取 shell 超时上限的**解析口径**（与 worker 侧同源），不引入 shell 执行本身。
 import { resolveShellMaxTimeoutMs } from './lib/shell-tools.js';
@@ -1370,6 +1371,14 @@ async function claimLoop() {
       continue;
     }
     try {
+      if (state.runs.size === 0) {
+        const builds = await internalRequest('POST', '/project-builds/claim', { body: {} });
+        if (builds.data?.job) {
+          await executeProjectBuild(builds.data.job, { request: internalRequest, uid: CFG.workerUid, gid: CFG.workerGid,
+            shouldStop: () => !!(state.revokeReason || state.shutdown) });
+          continue;
+        }
+      }
       const r = await claimOnce();
       if (r.status === 200 && r.data) {
         await handleTicket(r.data);
