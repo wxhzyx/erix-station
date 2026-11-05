@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
 import { validateDeliveryTarget } from '../src/delivery-target.js';
-import { requestBuild, leasedBuild, downloadableBuild, buildArtifactPath } from '../src/project-builds.js';
+import { requestBuild, leasedBuild, downloadableBuild, buildArtifactPath, saveBuildArtifact } from '../src/project-builds.js';
 const id='00000000-0000-4000-8000-000000000001';
 const desktop={type:'desktop',build:{directory:'.',command:'npm run build:test',output:'dist/test.zip',timeout_seconds:300}};
 test('old packages default to web; desktop contract is administrator-owned and bounded',()=>{
@@ -33,4 +37,15 @@ test('execution needs matching owner and live lease; revoked members cannot down
   await assert.rejects(downloadableBuild(db,{artifactsRoot:'/unused'},{id,role:'fde'},id),{code:'not_found'});
   assert.equal(seen.at(-1).args[2],false);assert.match(seen.at(-1).sql,/m.state='active'/);
   assert.throws(()=>buildArtifactPath('/unused','../../private'),{code:'not_found'});
+});
+test('artifact persistence records exact bytes, checksum and unique downloadable version',async()=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'build-store-'));let written;
+  const db={async query(sql,args){if(sql.startsWith('UPDATE')){written=args;return {rows:[{id}]};}
+    return {rows:[{id,repo_name:'desktop',source_sha:'a'.repeat(40),delivery_target:desktop}]};}};
+  try{
+    await saveBuildArtifact(db,{artifactsRoot:root},id,id,'b'.repeat(64),[Buffer.from('abc'),Buffer.from('def')]);
+    assert.equal((await fs.readFile(buildArtifactPath(root,id))).toString(),'abcdef');
+    assert.equal(written[3],'desktop-aaaaaaaa-00000000.zip');assert.equal(written[4],6);
+    assert.equal(written[5],crypto.createHash('sha256').update('abcdef').digest('hex'));
+  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
