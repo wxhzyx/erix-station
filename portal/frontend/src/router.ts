@@ -47,6 +47,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'approvals', name: 'admin-approvals', component: () => import('./views/AdminApprovalsView.vue'), meta: { requiresRole: 'admin' } },
       { path: 'delivery', name: 'admin-delivery', component: () => import('./views/AdminDeliveryView.vue'), meta: { requiresRole: 'admin' } },
       { path: 'quotas', name: 'admin-quotas', component: () => import('./views/AdminQuotaView.vue'), meta: { requiresRole: 'admin' } },
+      { path: 'member-usage', name: 'admin-member-usage', component: () => import('./views/AdminMemberUsageView.vue'), meta: { requiresRole: 'admin' } },
       { path: 'model-access', name: 'admin-model-access', component: () => import('./views/ModeSettingsView.vue'), meta: { requiresRole: 'admin' } },
       { path: '', redirect: { name: 'admin-users' }, meta: { requiresRole: 'admin' } },
       {

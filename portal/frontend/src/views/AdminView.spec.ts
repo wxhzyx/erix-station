@@ -109,6 +109,33 @@ afterEach(() => {
 });
 
 describe('Admin console routing and layout', () => {
+  it('opens member usage from Members & resources without leaving the console', async () => {
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const { wrapper, router, fetchFn } = await mountAdmin('/admin/users', url => url.endsWith('/token-quota')
+      ? jsonResponse(200, { day, used: 1200, reserved: 100, daily_limit: 2000000, remaining: 1998700 }) : undefined);
+    try {
+      expect(fetchFn.mock.calls.some(([url]) => String(url).endsWith('/token-quota'))).toBe(false);
+      const link = wrapper.get('a[href="/admin/member-usage"]');
+      expect(link.element.closest('.admin-nav-group')?.textContent).toContain('成员与资源');
+      await link.trigger('click');
+      await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/admin/member-usage'));
+      await flushPromises();
+      expect(wrapper.get('h1').text()).toBe('成员用量');
+      expect(wrapper.find('.admin-navigation a[aria-current="page"]').text()).toBe('成员用量');
+      expect(wrapper.get('.member-usage').text()).toContain('1,200');
+      expect(wrapper.get('.member-usage').text()).toContain('alice');
+    } finally { wrapper.unmount(); }
+  });
+
+  it('denies a non-admin the member usage route', async () => {
+    const pinia = createPinia(); setActivePinia(pinia);
+    const auth = useAuthStore(pinia);
+    auth.user = { ...ADMIN_USER, role: 'fde', fde_name: 'root' }; auth.ready = true;
+    const router = createAppRouter(createMemoryHistory());
+    await router.push('/admin/member-usage');
+    expect(router.currentRoute.value.path).toBe('/');
+  });
+
   it('/admin redirects to /admin/users; shared header and current tab are rendered', async () => {
     const { wrapper, router } = await mountAdmin('/admin');
     expect(router.currentRoute.value.path).toBe('/admin/users');
