@@ -116,7 +116,7 @@ describe('工具卡片折叠（issue #85）', () => {
     expect(cardBtn(wrapper).attributes('aria-expanded')).toBe('true');
     expect(wrapper.get('pre').text()).toContain('{"command":"ls -la"}');
     // pre 防溢出三件套
-    expect(wrapper.get('pre').classes()).toEqual(expect.arrayContaining(['whitespace-pre-wrap', 'break-all', 'overflow-auto']));
+    expect(wrapper.get('pre').classes()).toContain('stream-details');
     expect(wrapper.text()).toContain('✓ done（12ms）');
     // chevron 旋转
     expect(cardBtn(wrapper).find('.rotate-180').exists()).toBe(true);
@@ -175,7 +175,7 @@ describe('工具卡片折叠（issue #85）', () => {
       err1: { name: 'b', dig: '', args: '{}', ok: false, out: '', dur: 7 },
       null1: { name: 'c', dig: '', args: '{}', ok: null, out: '' },
     });
-    const cards = wrapper.findAll('.border-l-4');
+    const cards = wrapper.findAll('.stream-tool');
     expect(cards[0].classes()).toContain('border-l-green-600');
     expect(cards[1].classes()).toContain('border-l-red-600');
     expect(cards[2].classes()).toContain('border-l-neutral-500');
@@ -192,7 +192,7 @@ describe('工具卡片折叠（issue #85）', () => {
       min: { name: 'b', dig: '', args: '{}', ok: false, out: '', dur: 65000 },
       none: { name: 'c', dig: '', args: '{}', ok: true, out: '' }, // 引擎未给时长
     });
-    const cards = wrapper.findAll('.border-l-4');
+    const cards = wrapper.findAll('.stream-tool');
     expect(cards[0].get('button').text()).toContain('✓ 4.3s');
     expect(cards[1].get('button').text()).toContain('✗ 1m 5s');
     const header = cards[2].get('button').text();
@@ -207,7 +207,7 @@ describe('工具卡片折叠（issue #85）', () => {
     store.es.projectToolCard('p-dur', { name: 'shell', argsSummary: 'command=sleep 5', resultPreview: 'exit_code: 0', durationMs: 4321 });
     store.es.projectToolCard('p-legacy', { name: 'shell', argsSummary: 'command=sleep 5', resultPreview: 'exit_code: 0' });
     store.entries.push({ kind: 'tool', callId: 'p-dur' }, { kind: 'tool', callId: 'p-legacy' });
-    const cards = mountPanel().findAll('.border-l-4');
+    const cards = mountPanel().findAll('.stream-tool');
     // 变异取证④：摘掉前端对 `durationMs` 的消费（或后端 join）就红在本行
     expect(cards[0].get('button').text()).toContain('✓ 4.3s');
     const legacy = cards[1].get('button').text();

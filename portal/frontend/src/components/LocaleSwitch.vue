@@ -1,17 +1,21 @@
 <script setup lang="ts">
+import { ElButton } from "element-plus";
 // 语言切换菜单（issue #101 P1）：小号下拉——按钮显示当前语言，菜单两项「中文」/「English」。
 // 切换即调 setLocale（i18n 响应式生效 + localStorage 持久化 + <html lang> 同步）；
 // 文案走 locale.* 命名空间（语言名用母语自名，两语言下取值一致）。
 // 组件自带外部点击收起；当前挂载点：LoginView 卡片头部 + WorkbenchView 顶栏（AdminView 为次级页面，不挂）。
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useI18n } from 'vue-i18n';
-import { setLocale, type AppLocale } from '../i18n';
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { setLocale, type AppLocale } from "../i18n";
 
 const { t, locale } = useI18n();
 
-const OPTIONS: readonly { value: AppLocale; labelKey: 'locale.zhCN' | 'locale.en' }[] = [
-  { value: 'zh-CN', labelKey: 'locale.zhCN' },
-  { value: 'en', labelKey: 'locale.en' },
+const OPTIONS: readonly {
+  value: AppLocale;
+  labelKey: "locale.zhCN" | "locale.en";
+}[] = [
+  { value: "zh-CN", labelKey: "locale.zhCN" },
+  { value: "en", labelKey: "locale.en" },
 ];
 
 const open = ref(false);
@@ -32,38 +36,62 @@ function select(value: AppLocale) {
 function onDocumentClick(e: MouseEvent) {
   if (root.value && !root.value.contains(e.target as Node)) open.value = false;
 }
-onMounted(() => document.addEventListener('click', onDocumentClick));
-onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
+onMounted(() => document.addEventListener("click", onDocumentClick));
+onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
 </script>
-
 <template>
-  <div ref="root" class="relative inline-block">
-    <button
-      type="button"
-      class="flex items-center gap-1 rounded-md border border-black/20 px-2 py-0.5 text-sm text-black/70 hover:bg-black/5"
+  <div ref="root" class="language-switch" @keydown.esc="open = false">
+    <ElButton
+      size="small"
+      text
       :aria-label="t('locale.label')"
       aria-haspopup="menu"
       :aria-expanded="open"
       @click="open = !open"
+      ><span class="language-icon" aria-hidden="true">◎</span>{{ currentLabel
+      }}<span aria-hidden="true">⌄</span></ElButton
     >
-      <span>{{ currentLabel }}</span>
-      <span aria-hidden="true" class="text-[0.6rem] leading-none">▾</span>
-    </button>
-
-    <ul
-      v-if="open"
-      role="menu"
-      class="absolute right-0 z-10 mt-1 min-w-full overflow-hidden rounded-md border border-black/20 bg-white py-0.5 shadow-sm"
-    >
+    <ul v-if="open" role="menu">
       <li v-for="opt in OPTIONS" :key="opt.value" role="none">
-        <button
-          type="button"
+        <ElButton
+          text
           role="menuitem"
-          class="block w-full whitespace-nowrap px-3 py-1 text-left text-sm hover:bg-black/5"
-          :class="opt.value === locale ? 'text-brand' : 'text-black/80'"
+          :class="{ selected: opt.value === locale }"
           @click="select(opt.value)"
-        >{{ t(opt.labelKey) }}</button>
+          >{{ t(opt.labelKey) }}</ElButton
+        >
       </li>
     </ul>
   </div>
 </template>
+<style scoped>
+.language-switch {
+  position: relative;
+  display: inline-block;
+}
+.language-icon {
+  margin-right: 5px;
+}
+.language-switch ul {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 100;
+  min-width: 130px;
+  padding: 6px;
+  background: white;
+  border: 1px solid #e3e8f1;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px #20314f16;
+  list-style: none;
+}
+.language-switch li .el-button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+}
+.selected {
+  color: #365cf5;
+  background: #edf1ff;
+}
+</style>

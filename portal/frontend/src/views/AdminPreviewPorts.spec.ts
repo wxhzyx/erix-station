@@ -142,7 +142,7 @@ describe('管理台 · FDE 预览端口面板', () => {
       await flushPromises();
       expect(callsTo(fetchMock, 'GET', '/api/admin/fdes/alpha-fde/ports')).toHaveLength(1);
       const panel = wrapper.get('[data-test="fde-ports-pane"]');
-      expect(panel.findAll('[data-test="preview-port-row"]')).toHaveLength(3);
+      await vi.waitFor(() => expect(panel.findAll('.el-table__body .el-table__row')).toHaveLength(3));
       expect(panel.text()).toContain('alpha-fde-p-22009.fde.erix.vip');
       expect(panel.get('[data-test="block-current-range"]').text()).toContain('22000–22009');
       // 代看别人时也照常给出可签票的入口（admin 对 private 端口可代签）

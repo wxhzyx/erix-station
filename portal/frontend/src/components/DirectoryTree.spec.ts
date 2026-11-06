@@ -64,17 +64,17 @@ describe('DirectoryTree（目录树面板）', () => {
   it('默认收起：零请求；展开后只拉根层单层（path 参数为空串）', async () => {
     mockTreeFetch();
     const wrapper = mountTree({ cwd: '~/projects/demo' });
-    expect(wrapper.text()).toContain('▸ 目录树');
+    expect(wrapper.text()).toContain('›目录树');
     expect(vi.mocked(fetch)).not.toHaveBeenCalled(); // 懒：收起时不发请求
 
     await openPanel(wrapper);
-    expect(wrapper.text()).toContain('▾ 目录树');
+    expect(wrapper.text()).toContain('⌄目录树');
     expect(wrapper.text()).toContain('src');
     expect(wrapper.text()).toContain('README.md');
     // 图标区分：目录 📁 / 文件 📄
     const [src, readme] = rowBtns(wrapper);
-    expect(src.text()).toContain('📁');
-    expect(readme.text()).toContain('📄');
+    expect(src.attributes('aria-expanded')).toBe('false');
+    expect(readme.find('svg').exists()).toBe(true);
     // 单层 API：仅一次根层请求，无递归
     const calls = vi.mocked(fetch).mock.calls.map(([u]) => String(u));
     expect(calls).toHaveLength(1);
@@ -102,7 +102,7 @@ describe('DirectoryTree（目录树面板）', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('index.ts'));
     expect(vi.mocked(fetch).mock.calls.length).toBe(callsAfterRoot + 1);
     expect(String(vi.mocked(fetch).mock.calls.at(-1)![0])).toContain('path=src');
-    expect(src.text()).toContain('📂');
+    expect(src.attributes('aria-expanded')).toBe('true');
 
     // 嵌套文件点击：emit 完整相对路径 a/b/c（同样零树请求）
     const nested = rowBtns(wrapper).find((b) => b.text().includes('index.ts'))!;
@@ -188,16 +188,16 @@ describe('DirectoryTree · 字号收敛（issue #112）', () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, { entries: [] })));
     const wrapper = mountTree({ cwd: '~/projects/empty' });
     const title = wrapper.get('button');
-    expect(title.classes()).toContain('text-[11px]');
-    expect(title.classes()).toContain('font-semibold');
-    expect(title.classes()).toContain('tracking-[0.05em]');
+    expect(title.classes()).toContain('file-explorer__heading');
+    expect(title.classes()).toContain('el-button');
+    expect(title.classes()).toContain('is-text');
 
     mockTreeFetch();
     const w2 = mountTree({ cwd: '~/projects/demo' });
     await openPanel(w2);
     const [src] = rowBtns(w2);
-    expect(src.classes()).toContain('text-[12px]');
-    expect(src.classes()).toContain('py-[1px]'); // 行高收紧
+    expect(src.classes()).toContain('explorer-node__row');
+    expect(src.classes()).toContain('el-button'); // 行高收紧
 
     // 空目录提示 11px
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, { entries: [] })));
@@ -205,7 +205,7 @@ describe('DirectoryTree · 字号收敛（issue #112）', () => {
     await w3.get('button').trigger('click');
     await vi.waitFor(() => expect(w3.text()).toContain('（空目录）'));
     const emptyLine = w3.findAll('p').find((p) => p.text() === '（空目录）')!;
-    expect(emptyLine.classes()).toContain('text-[11px]');
+    expect(emptyLine.classes()).toContain('file-explorer__empty');
   });
 });
 
@@ -223,7 +223,7 @@ describe('DirectoryTree · i18n（issue #101 P2）', () => {
     const empty = mountTree({ cwd: '~/projects/empty' });
     await empty.get('button').trigger('click');
     await vi.waitFor(() => expect(empty.text()).toContain('（空目录）'));
-    expect(empty.text()).toContain('▾ 目录树');
+    expect(empty.text()).toContain('⌄目录树');
 
     mockTreeFetch(['']);
     const failed = mountTree({ cwd: '~/projects/demo' });

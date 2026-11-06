@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ElButton, ElTag, ElEmpty, ElSkeleton, ElAlert } from "element-plus";
+import ModalShell from "./ModalShell.vue";
 // 会话选择 modal（issue #94，架构评审裁决瘦身版）：单次全量浏览（limit=100 一次拉全，弹窗内滚动）。
 // 入口：① 侧栏固定头 🔍（无目录时 all）② Ctrl/⌘+K（scope='all' 跨目录找回）。
 // 契约：props { scope: 'cwd'|'all', cwd? }；emits select(sessionId) / close。
@@ -6,24 +8,33 @@
 // 范围 segmented 恒可改；三态（加载中/无结果/失败保留旧列表+重试）；
 // 键盘 ↑↓ 高亮、Enter 进入、Esc 关闭；焦点进 dialog 容器并归还触发按钮；
 // dialog 语义（role/aria-modal）；移动端 max-md 全屏层锁背景滚动，桌面居中 dialog。
-import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue';
-import { useI18n } from 'vue-i18n';
-import { useSessionBrowser, type PickerSession } from '../composables/useSessionBrowser';
+import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import {
+  useSessionBrowser,
+  type PickerSession,
+} from "../composables/useSessionBrowser";
 
 // issue #101 P2：用户可见文案走 i18n（picker.* / common.*）；issue #105 ③：时间戳亦随 locale。
 const { t, locale } = useI18n();
 
-const props = withDefaults(defineProps<{ scope: 'cwd' | 'all'; cwd?: string }>(), { cwd: undefined });
+const props = withDefaults(
+  defineProps<{ scope: "cwd" | "all"; cwd?: string }>(),
+  { cwd: undefined },
+);
 const emit = defineEmits<{
-  (e: 'select', sessionId: string): void;
-  (e: 'close'): void;
+  (e: "select", sessionId: string): void;
+  (e: "close"): void;
 }>();
 
 // 范围 segmented：入口只给默认值，modal 内恒可改（扩大/缩小到当前目录）。
 const scope = ref(props.scope);
 const cwdRef = computed(() => props.cwd ?? null);
-const dirShortName = computed(() => props.cwd?.split('/').pop() ?? '');
-const { items, loading, error, empty, retry } = useSessionBrowser({ scope, cwd: cwdRef });
+const dirShortName = computed(() => props.cwd?.split("/").pop() ?? "");
+const { items, loading, error, empty, retry } = useSessionBrowser({
+  scope,
+  cwd: cwdRef,
+});
 
 // ---- 键盘高亮（↑↓ 移动、Enter 进入；列表刷新后回第一条）----
 const activeIndex = ref(-1);
@@ -32,44 +43,22 @@ watch(items, (list) => {
 });
 
 function pick(s: PickerSession) {
-  emit('select', String(s.id));
+  emit("select", String(s.id));
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    e.preventDefault();
-    emit('close');
-    return;
-  }
   const n = items.value.length;
   if (n === 0) return;
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     e.preventDefault();
-    const delta = e.key === 'ArrowDown' ? 1 : -1;
+    const delta = e.key === "ArrowDown" ? 1 : -1;
     activeIndex.value = (activeIndex.value + delta + n) % n;
-  } else if (e.key === 'Enter') {
+  } else if (e.key === "Enter") {
     e.preventDefault();
     const item = items.value[activeIndex.value];
     if (item) pick(item);
   }
 }
-
-// ---- 焦点管理 + 背景滚动锁定：打开焦点进 dialog，关闭归还触发按钮 ----
-const dialogEl = useTemplateRef<HTMLElement>('dialogEl');
-let previousFocus: Element | null = null;
-let previousOverflow = '';
-
-onMounted(async () => {
-  previousFocus = document.activeElement;
-  previousOverflow = document.body.style.overflow;
-  document.body.style.overflow = 'hidden'; // 锁背景滚动（移动端全屏层）
-  await nextTick();
-  dialogEl.value?.focus();
-});
-onUnmounted(() => {
-  document.body.style.overflow = previousOverflow;
-  (previousFocus as HTMLElement | null)?.focus?.();
-});
 
 // 绝对本地时间（与侧栏 store.sessMeta 一致：按当前 locale 格式化；'zh-CN' 输出逐字不变，en 走英文格式）。
 // locale 为响应式 ref → 模板内调用 abs() 时读取，切语言即时重渲染。
@@ -77,82 +66,170 @@ const abs = (iso?: string) => new Date(iso ?? 0).toLocaleString(locale.value);
 </script>
 
 <template>
-  <!-- 遮罩 + dialog 同一固定容器：移动端全屏层、桌面居中 dialog -->
-  <!-- keydown 挂容器：焦点在 dialog 内时 ↑↓/Enter/Esc 经冒泡到达 -->
-  <div class="fixed inset-0 z-50" @keydown="onKeydown">
-    <div class="absolute inset-0 bg-black/40" @click="emit('close')"></div>
-    <div
-      ref="dialogEl"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="t('picker.title')"
-      tabindex="-1"
-      class="absolute inset-x-0 top-10 bottom-0 flex flex-col bg-white shadow-xl outline-none max-md:rounded-t-lg md:inset-auto md:left-1/2 md:top-1/2 md:bottom-auto md:w-[32rem] md:max-h-[72vh] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-lg"
-    >
-      <!-- 头：范围 segmented（恒可改）+ 关闭 -->
-      <div class="flex items-center gap-2 border-b border-black/10 px-3 py-2">
-        <div class="flex min-w-0 rounded-md border border-black/20 text-sm" role="group" :aria-label="t('picker.scopeLabel')">
-          <button
-            type="button"
-            class="min-w-0 truncate rounded-l-md px-2 py-1 disabled:opacity-40"
-            :class="scope === 'cwd' ? 'bg-brand text-white' : 'hover:bg-black/5'"
-            :disabled="!cwd"
-            :title="cwd ? t('picker.currentDirTitle', { cwd }) : t('picker.noDirSelected')"
-            @click="scope = 'cwd'"
-          >{{ t('picker.currentDir', { name: dirShortName || '—' }) }}</button>
-          <button
-            type="button"
-            class="rounded-r-md border-l border-black/20 px-2 py-1"
-            :class="scope === 'all' ? 'bg-brand text-white' : 'hover:bg-black/5'"
-            @click="scope = 'all'"
-          >{{ t('picker.allDirs') }}</button>
+  <ModalShell
+    :label="t('picker.title')"
+    dialog-class="picker-dialog"
+    @keydown="onKeydown"
+    @close="emit('close')"
+  >
+    <div class="session-browser">
+      <header>
+        <div>
+          <h2>{{ t("picker.title") }}</h2>
         </div>
-        <button
-          type="button"
+        <ElButton
+          text
+          circle
           :aria-label="t('common.close')"
-          class="ml-auto shrink-0 rounded-md px-2 py-1 text-sm hover:bg-black/5"
           @click="emit('close')"
-        >✕</button>
+          >×</ElButton
+        >
+      </header>
+      <div
+        class="session-browser__scope"
+        role="group"
+        :aria-label="t('picker.scopeLabel')"
+      >
+        <ElButton
+          :type="scope === 'cwd' ? 'primary' : 'default'"
+          :plain="scope !== 'cwd'"
+          :disabled="!cwd"
+          :title="
+            cwd
+              ? t('picker.currentDirTitle', { cwd })
+              : t('picker.noDirSelected')
+          "
+          @click="scope = 'cwd'"
+          >{{ t("picker.currentDir", { name: dirShortName || "—" }) }}</ElButton
+        >
+        <ElButton
+          :type="scope === 'all' ? 'primary' : 'default'"
+          :plain="scope !== 'all'"
+          @click="scope = 'all'"
+          >{{ t("picker.allDirs") }}</ElButton
+        >
       </div>
-
-      <!-- 结果列表：独立滚动（单次全量，无分页）；px-2 与侧栏 aside 内边距对齐，使行样式与侧栏同构 -->
-      <div class="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-        <ul role="listbox" :aria-label="t('picker.listLabel')">
-          <!-- issue #112：条目与侧栏同一套扁平行样式（无边框卡、左 2px brand 竖条 + 浅绿底、12/11px） -->
+      <div class="session-browser__results">
+        <ul role="listbox" :aria-label="t('picker.listLabel')" tabindex="0">
           <li
             v-for="(s, i) in items"
             :key="String(s.id)"
-            class="flex min-h-[54px] cursor-pointer items-center border-l-2 pl-3.5 pr-2"
-            :class="i === activeIndex ? 'border-l-brand bg-green-50' : 'border-l-transparent hover:bg-black/5'"
+            :class="{ active: i === activeIndex }"
             role="option"
             :aria-selected="i === activeIndex"
             @click="pick(s)"
             @mouseenter="activeIndex = i"
           >
-            <div class="min-w-0 flex-1">
-              <div class="flex min-w-0 items-center gap-1.5 text-[12px] leading-[1.4]">
-                <span class="truncate">{{ s.title || t('common.unnamedSession') }}</span>
-                <span v-if="s.active_run_id" class="shrink-0 text-[11px] text-brand">{{ t('common.runningBadge') }}</span>
-              </div>
-              <div class="mt-0.5 truncate text-[11px] leading-[1.4] text-black/50">
-                <span v-if="scope === 'all'">{{ s.cwd?.split('/').pop() ?? t('common.noDir') }} · </span>{{ abs(s.updated_at) }}
-              </div>
+            <div>
+              <strong>{{ s.title || t("common.unnamedSession") }}</strong>
+              <p>
+                <span v-if="scope === 'all'"
+                  >{{ s.cwd?.split("/").pop() ?? t("common.noDir") }} · </span
+                >{{ abs(s.updated_at) }}
+              </p>
             </div>
+            <ElTag v-if="s.active_run_id" size="small" type="success">{{
+              t("common.runningBadge")
+            }}</ElTag
+            ><span aria-hidden="true">↗</span>
           </li>
         </ul>
-
-        <!-- 三态：加载中 / 无结果 / 失败（保留旧列表 + 重试）；空态文案 11px（issue #112） -->
-        <p v-if="loading" class="py-4 text-center text-[11px] text-black/50">{{ t('common.loading') }}</p>
-        <p v-else-if="empty" class="py-6 text-center text-[11px] text-black/50">{{ t('picker.empty') }}</p>
-        <div v-if="error" class="py-4 text-center">
-          <p class="syserr" role="alert">{{ error }}{{ t('picker.staleListKept') }}</p>
-          <button
-            type="button"
-            class="mt-2 rounded-md border border-black/20 px-2.5 py-1 text-sm hover:bg-black/5"
-            @click="retry"
-          >{{ t('common.retry') }}</button>
+        <ElSkeleton
+          v-if="loading"
+          :rows="4"
+          animated
+          :aria-label="t('common.loading')"
+        />
+        <ElEmpty
+          v-else-if="empty"
+          :description="t('picker.empty')"
+          :image-size="70"
+        />
+        <div v-if="error" class="session-browser__error">
+          <ElAlert
+            :title="error + t('picker.staleListKept')"
+            type="error"
+            :closable="false"
+            role="alert"
+          /><ElButton @click="retry">{{ t("common.retry") }}</ElButton>
         </div>
       </div>
     </div>
-  </div>
+  </ModalShell>
 </template>
+
+<style scoped>
+.session-browser header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 26px 18px;
+}
+.session-browser header small {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #8794ae;
+}
+.session-browser h2 {
+  font-size: 20px;
+  margin: 6px 0 0;
+  color: #23314d;
+}
+.session-browser__scope {
+  padding: 0 26px 20px;
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid #edf0f6;
+}
+.session-browser__scope .el-button + .el-button {
+  margin: 0;
+}
+.session-browser__results {
+  max-height: 56vh;
+  overflow: auto;
+  padding: 12px 18px 24px;
+}
+.session-browser ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.session-browser li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.session-browser li.active {
+  border-color: #dae3ff;
+  background: #f3f6ff;
+}
+.session-browser li > div {
+  flex: 1;
+  min-width: 0;
+}
+.session-browser li strong {
+  display: block;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+.session-browser li p {
+  font-size: 11px;
+  color: #8a96aa;
+  margin: 6px 0 0;
+}
+.session-browser li > span:last-child {
+  color: #8794b0;
+}
+.session-browser__error {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+</style>

@@ -1,3 +1,4 @@
+import { ElSelect, ElOption } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
@@ -113,8 +114,8 @@ describe('Admin console routing and layout', () => {
     expect(router.currentRoute.value.path).toBe('/admin/users');
     expect(wrapper.get('h1').text()).toBe('成员与工位');
     expect(wrapper.findAll('.station-topbar')).toHaveLength(1);
-    expect(wrapper.get('.rail-profile').text()).toContain('Root');
-    expect(wrapper.get('.station-mode-switch').text()).toContain('工作模式');
+    expect(wrapper.get('.account-trigger').text()).toContain('Root');
+    expect(wrapper.get('.rail-menu').text()).toContain('开发工作台');
     expect(wrapper.find('.station-admin > .station-header').exists()).toBe(false);
     expect(wrapper.find('[aria-label="账号菜单"]').exists()).toBe(true);
     expect(wrapper.find('.admin-navigation a[aria-current="page"]').text()).toBe('成员与工位');
@@ -159,10 +160,10 @@ describe('AdminReposView · Git host registry', () => {
     const { wrapper } = await mountAdmin('/admin/repos');
     try {
       await wrapper.get('[data-test="open-add-git-host"]').trigger('click');
-      const providerSelect = wrapper.get('[data-test="git-host-form"] select');
-      expect(providerSelect.find('option[value="gitea"]').exists()).toBe(true);
-      expect(providerSelect.find('option[value="gitlab"]').exists()).toBe(true);
-      expect(providerSelect.find('option[value="github"]').exists()).toBe(true);
+      const providerSelect = wrapper.get('[data-test="git-host-form"]').getComponent(ElSelect);
+      expect(providerSelect.findAllComponents(ElOption).some(option => option.props('value') === 'gitea')).toBe(true);
+      expect(providerSelect.findAllComponents(ElOption).some(option => option.props('value') === 'gitlab')).toBe(true);
+      expect(providerSelect.findAllComponents(ElOption).some(option => option.props('value') === 'github')).toBe(true);
     } finally {
       wrapper.unmount();
     }
@@ -189,7 +190,7 @@ describe('AdminReposView · Git host registry', () => {
 
       await wrapper.get('[data-test="open-add-git-host"]').trigger('click');
       const form = wrapper.get('[data-test="git-host-form"]');
-      const providerSelect = form.get('[data-test="git-host-provider"]');
+      const providerSelect = form.getComponent<typeof ElSelect>('[data-test="git-host-provider"]');
       await providerSelect.setValue('github');
 
       // GitHub 不允许平台代铸：admin key 输入禁用、非必填，并给出「该 FDE 自己的 PAT」提示
@@ -198,7 +199,7 @@ describe('AdminReposView · Git host registry', () => {
       expect(adminKeyInput.attributes('required')).toBeUndefined();
       expect(form.get('[data-test="git-host-github-hint"]').text()).toContain('PAT');
 
-      const inputs = form.findAll('input');
+      const inputs = form.findAll('input:not(.el-select__input)');
       await inputs[0].setValue('GitHub');
       await inputs[1].setValue('https://github.com');
       await form.trigger('submit.prevent');
@@ -224,9 +225,9 @@ describe('AdminReposView · Git host registry', () => {
     try {
       await wrapper.get('[data-test="open-add-git-host"]').trigger('click');
       const addForm = wrapper.get('[data-test="git-host-form"]');
-      const addInputs = addForm.findAll('input');
+      const addInputs = addForm.findAll('input:not(.el-select__input)');
       await addInputs[0].setValue('GitLab');
-      await addForm.get('select').setValue('gitlab');
+      await addForm.getComponent(ElSelect).setValue('gitlab');
       await addInputs[1].setValue('https://gitlab.example.com');
       await addInputs[2].setValue('admin-secret-not-echoed');
       await addForm.trigger('submit.prevent');
@@ -243,9 +244,9 @@ describe('AdminReposView · Git host registry', () => {
 
       await wrapper.get('[data-test="edit-git-host"]').trigger('click');
       const editForm = wrapper.get('[data-test="git-host-form"]');
-      await editForm.findAll('input')[0].setValue('Gitea renamed');
-      await editForm.findAll('input')[1].setValue('https://git-new.example.com');
-      await editForm.findAll('input')[2].setValue('new-admin-secret');
+      await editForm.findAll('input:not(.el-select__input)')[0].setValue('Gitea renamed');
+      await editForm.findAll('input:not(.el-select__input)')[1].setValue('https://git-new.example.com');
+      await editForm.findAll('input:not(.el-select__input)')[2].setValue('new-admin-secret');
       await editForm.trigger('submit.prevent');
       await flushPromises();
       const patch = callsTo(fetchFn, 'PATCH', '/api/admin/git-hosts/gh1')
@@ -369,8 +370,8 @@ describe('AdminView · LLM 管理', () => {
 
     await wrapper.get('[data-test="open-add-provider"]').trigger('click');
     const addForm = wrapper.get('[data-test="add-provider-form"]');
-    await addForm.findAll('input')[0].setValue('new-provider');
-    await addForm.findAll('input')[1].setValue('https://llm.example/v1');
+    await addForm.findAll('input:not(.el-select__input)')[0].setValue('new-provider');
+    await addForm.findAll('input:not(.el-select__input)')[1].setValue('https://llm.example/v1');
     const addKey = addForm.get('[data-test="add-provider-api-key"]');
     expect(addKey.attributes('type')).toBe('password');
     expect(addKey.attributes('autocomplete')).toBe('new-password');
@@ -384,8 +385,8 @@ describe('AdminView · LLM 管理', () => {
 
     await wrapper.get('[data-test="open-add-provider"]').trigger('click');
     const addWithoutKey = wrapper.get('[data-test="add-provider-form"]');
-    await addWithoutKey.findAll('input')[0].setValue('mock-provider');
-    await addWithoutKey.findAll('input')[1].setValue('http://mock-llm/v1');
+    await addWithoutKey.findAll('input:not(.el-select__input)')[0].setValue('mock-provider');
+    await addWithoutKey.findAll('input:not(.el-select__input)')[1].setValue('http://mock-llm/v1');
     await addWithoutKey.trigger('submit.prevent');
     await flushPromises();
     expect(JSON.parse(String(callsTo(fetchFn, 'POST', '/api/admin/llm/providers')[1][1]?.body)))
@@ -393,12 +394,12 @@ describe('AdminView · LLM 管理', () => {
 
     await wrapper.findAll('[data-test="provider-card"]')[0].get('[data-test="edit-provider"]').trigger('click');
     const editForm = wrapper.get('[data-test="edit-provider-form"]');
-    expect(editForm.findAll('input')).toHaveLength(2);
+    expect(editForm.findAll('input:not(.el-select__input)')).toHaveLength(2);
     const editKey = editForm.get('[data-test="edit-provider-api-key"]');
     expect(editKey.attributes('type')).toBe('password');
     expect(editKey.attributes('autocomplete')).toBe('new-password');
     expect((editKey.element as HTMLInputElement).value).toBe('');
-    await editForm.findAll('input')[0].setValue('https://new.openai.com/v1');
+    await editForm.findAll('input:not(.el-select__input)')[0].setValue('https://new.openai.com/v1');
     await editForm.trigger('submit.prevent');
     await flushPromises();
     const patch = callsTo(fetchFn, 'PATCH', '/api/admin/llm/providers/p1').find(
@@ -444,22 +445,22 @@ describe('AdminView · LLM 管理', () => {
 
     await wrapper.get('[data-test="open-add-model"]').trigger('click');
     const addForm = wrapper.get('[data-test="add-model-form"]');
-    expect(addForm.findAll('input')[0].attributes('required')).toBeDefined();
+    expect(addForm.findAll('input:not(.el-select__input)')[0].attributes('required')).toBeDefined();
     // #296 口径：新增表单第一个字段是**调用名**，不得把内部字段名 `model_id` 直接标给人看
     //（编辑表单已如此，见下方 `editForm.text()).not.toContain('model_id')`）。
     expect(addForm.text()).not.toContain('model_id');
     expect(addForm.find('[data-test="add-model-call-name"]').exists()).toBe(true);
-    await addForm.findAll('input')[0].setValue('gpt-4o-mini');
+    await addForm.findAll('input:not(.el-select__input)')[0].setValue('gpt-4o-mini');
     const addUpstreamModel = addForm.get('[data-test="add-model-upstream-id"]');
     expect(addUpstreamModel.attributes('required')).toBeDefined();
     expect(addUpstreamModel.attributes('placeholder')).toBe('openai/<model>');
     await addUpstreamModel.setValue('openai/gpt-4o-mini');
-    await addForm.findAll('input')[2].setValue('GPT-4o mini');
+    await addForm.findAll('input:not(.el-select__input)')[2].setValue('GPT-4o mini');
     const addMaxTokens = addForm.get('[data-test="add-model-max-tokens"]');
     expect(addMaxTokens.attributes('type')).toBe('number');
     expect(addMaxTokens.attributes('min')).toBe('1');
     await addMaxTokens.setValue('2048');
-    await addForm.get('select').setValue('text');
+    await addForm.getComponent(ElSelect).setValue('text');
     await addForm.find('input[type="checkbox"]').setValue(true);
     await addForm.trigger('submit.prevent');
     await flushPromises();
@@ -475,8 +476,8 @@ describe('AdminView · LLM 管理', () => {
     const editForm = wrapper.get('[data-test="edit-model-form"]');
     expect(editForm.text()).not.toContain('model_id');
     expect(wrapper.get('[role="dialog"]').text()).toContain('编辑模型 GPT-4o');
-    const editType = editForm.get('[data-test="edit-model-type"]');
-    expect((editType.element as HTMLSelectElement).value).toBe('text');
+    const editType = editForm.getComponent<typeof ElSelect>('[data-test="edit-model-type"]');
+    expect(editType.props('modelValue')).toBe('text');
     const editUpstreamModel = editForm.get('[data-test="edit-model-upstream-id"]');
     expect((editUpstreamModel.element as HTMLInputElement).value).toBe('openai/gpt-4o');
     const editMaxTokens = editForm.get('[data-test="edit-model-max-tokens"]');
@@ -562,9 +563,9 @@ describe('AdminView · LLM 管理', () => {
     const addForm = wrapper.get('[data-test="add-model-form"]');
     // 提示写「上限 = 上下文窗口的 1/4」（让人知道规则），但不写本地校验。
     expect(addForm.text()).toContain('1/4');
-    await addForm.findAll('input')[0].setValue('gpt-4o-big');
+    await addForm.findAll('input:not(.el-select__input)')[0].setValue('gpt-4o-big');
     await addForm.get('[data-test="add-model-upstream-id"]').setValue('openai/gpt-4o-big');
-    await addForm.findAll('input')[2].setValue('Big');
+    await addForm.findAll('input:not(.el-select__input)')[2].setValue('Big');
     const maxOutputTokensField = addForm.get('[data-test="add-model-max-output-tokens"]');
     expect(maxOutputTokensField.attributes('type')).toBe('number');
     expect(maxOutputTokensField.attributes('min')).toBe('1');
@@ -770,9 +771,9 @@ describe('AdminView · LLM 管理', () => {
     // 新增：填 USD/1M → 提交为每 token（0.5 / 1.5 → 5e-7 / 1.5e-6）
     await wrapper.get('[data-test="open-add-model"]').trigger('click');
     const addForm = wrapper.get('[data-test="add-model-form"]');
-    await addForm.findAll('input')[0].setValue('new-model');
+    await addForm.findAll('input:not(.el-select__input)')[0].setValue('new-model');
     await addForm.get('[data-test="add-model-upstream-id"]').setValue('openai/new-model');
-    await addForm.findAll('input')[2].setValue('New');
+    await addForm.findAll('input:not(.el-select__input)')[2].setValue('New');
     await addForm.get('[data-test="add-model-input-cost"]').setValue('0.5');
     await addForm.get('[data-test="add-model-output-cost"]').setValue('1.5');
     await addForm.trigger('submit.prevent');
@@ -787,7 +788,7 @@ describe('AdminView · LLM 管理', () => {
     const editForm = wrapper.get('[data-test="edit-model-form"]');
     expect((editForm.get('[data-test="edit-model-input-cost"]').element as HTMLInputElement).value).toBe('0.28');
     // 清空定价 → PATCH 发 null
-    await editForm.get('[data-test="edit-model-clear-pricing"]').setValue(true);
+    await editForm.get('[data-test="edit-model-clear-pricing"] input').setValue(true);
     await editForm.trigger('submit.prevent');
     await flushPromises();
     const patch = callsTo(fetchFn, 'PATCH', '/api/admin/llm/models/m1')[0];
@@ -983,8 +984,8 @@ describe('Admin modals', () => {
     });
     await wrapper.get('[data-test="open-add-provider"]').trigger('click');
     const form = wrapper.get('[data-test="add-provider-form"]');
-    await form.findAll('input')[0].setValue('kept-name');
-    await form.findAll('input')[1].setValue('https://provider.example/v1');
+    await form.findAll('input:not(.el-select__input)')[0].setValue('kept-name');
+    await form.findAll('input:not(.el-select__input)')[1].setValue('https://provider.example/v1');
     await form.trigger('submit.prevent');
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
@@ -1039,8 +1040,8 @@ describe('AdminView · FDE 用户', () => {
 
     await wrapper.get('[data-test="open-add-user"]').trigger('click');
     const form = wrapper.get('[data-test="add-user-form"]');
-    await form.findAll('input')[0].setValue('carol');
-    await form.findAll('input')[1].setValue('Carol');
+    await form.findAll('input:not(.el-select__input)')[0].setValue('carol');
+    await form.findAll('input:not(.el-select__input)')[1].setValue('Carol');
     await form.get('[data-test="generate-password"]').trigger('click');
     const generatedPassword = (form.get('#new-user-password').element as HTMLInputElement).value;
     expect(generatedPassword).toHaveLength(16);
@@ -1050,13 +1051,13 @@ describe('AdminView · FDE 用户', () => {
     await form.get('#new-user-password').setValue('pass123');
     await form.get('[data-test="user-email"]').setValue('carol@example.test');
     await form.get('[data-test="user-fde-name"]').setValue('carol');
-    await form.get('[data-test="new-user-git-host"]').setValue('gh1');
-    await form.get('[data-test="new-user-llm-provider"]').setValue('p1');
+    await form.getComponent<typeof ElSelect>('[data-test="new-user-git-host"]').setValue('gh1');
+    await form.getComponent<typeof ElSelect>('[data-test="new-user-llm-provider"]').setValue('p1');
     // 模型选项给人看的是「展示名 (调用名)」，不是主键 model_id（真实环境那是 LiteLLM 的 UUID）。
-    expect(form.get('[data-test="new-user-main-model"]').findAll('option').map((o) => o.text()))
+    expect(form.getComponent<typeof ElSelect>('[data-test="new-user-main-model"]').findAllComponents(ElOption).map((o) => o.props('label')))
       .toEqual(['选择主模型', 'GPT-4o (gpt-4o)']);
-    await form.get('[data-test="new-user-main-model"]').setValue('m1');
-    await form.get('[data-test="user-totp-enabled"]').setValue(true);
+    await form.getComponent<typeof ElSelect>('[data-test="new-user-main-model"]').setValue('m1');
+    await form.get('[data-test="user-totp-enabled"] input').setValue(true);
     await form.trigger('submit.prevent');
     await flushPromises();
 
@@ -1117,7 +1118,7 @@ describe('AdminView · FDE 用户', () => {
         expect(panel.text()).toContain('重置用户密码');
         expect(panel.text()).toContain('TOTP 设置');
       } else if (name === 'llm') {
-        await panel.get('[data-test="provider-select"]').setValue('p2');
+        await panel.getComponent<typeof ElSelect>('[data-test="provider-select"]').setValue('p2');
       }
       for (const otherName of tabNames.filter((candidate) => candidate !== name)) {
         expect(editor.get(`[data-test="edit-tab-${otherName}"]`).attributes('aria-selected')).toBe('false');
@@ -1126,7 +1127,7 @@ describe('AdminView · FDE 用户', () => {
     }
 
     await editor.get('[data-test="edit-tab-llm"]').trigger('click');
-    expect((editor.get('[data-test="edit-panel-llm"] [data-test="provider-select"]').element as HTMLSelectElement).value)
+    expect(editor.getComponent<typeof ElSelect>('[data-test="edit-panel-llm"] [data-test="provider-select"]').props('modelValue'))
       .toBe('p2');
     await editor.get('[data-test="edit-tab-profile"]').trigger('click');
     expect((editor.get('[data-test="user-profile-form"] input').element as HTMLInputElement).value)
@@ -1151,15 +1152,15 @@ describe('AdminView · FDE 用户', () => {
     try {
       await wrapper.get('[data-test="open-add-user"]').trigger('click');
       const form = wrapper.get('[data-test="add-user-form"]');
-      const totpCheckbox = form.get('[data-test="user-totp-enabled"]').element as HTMLInputElement;
+      const totpCheckbox = form.get('[data-test="user-totp-enabled"] input').element as HTMLInputElement;
       expect(totpCheckbox.checked).toBe(false);
-      await form.findAll('input')[0].setValue('dave');
+      await form.findAll('input:not(.el-select__input)')[0].setValue('dave');
       await form.get('#new-user-password').setValue('pass123');
       await form.get('[data-test="user-email"]').setValue('dave@example.test');
       await form.get('[data-test="user-fde-name"]').setValue('dave');
-      await form.get('[data-test="new-user-git-host"]').setValue('gh1');
-      await form.get('[data-test="new-user-llm-provider"]').setValue('p1');
-      await form.get('[data-test="new-user-main-model"]').setValue('m1');
+      await form.getComponent<typeof ElSelect>('[data-test="new-user-git-host"]').setValue('gh1');
+      await form.getComponent<typeof ElSelect>('[data-test="new-user-llm-provider"]').setValue('p1');
+      await form.getComponent<typeof ElSelect>('[data-test="new-user-main-model"]').setValue('m1');
       await form.trigger('submit.prevent');
       await flushPromises();
 
@@ -1183,18 +1184,18 @@ describe('AdminView · FDE 用户', () => {
       await wrapper.get('[data-test="open-add-user"]').trigger('click');
       await flushPromises();
       const form = wrapper.get('[data-test="add-user-form"]');
-      await form.findAll('input')[0].setValue('no-model');
+      await form.findAll('input:not(.el-select__input)')[0].setValue('no-model');
       await form.get('#new-user-password').setValue('pass123');
       await form.get('[data-test="user-email"]').setValue('no-model@example.test');
       await form.get('[data-test="user-fde-name"]').setValue('no-model');
-      await form.get('[data-test="new-user-git-host"]').setValue('gh1');
+      await form.getComponent<typeof ElSelect>('[data-test="new-user-git-host"]').setValue('gh1');
       const submit = form.get('button[type="submit"]');
       expect((submit.element as HTMLButtonElement).disabled).toBe(true);
       await form.trigger('submit.prevent');
       expect(callsTo(fetchFn, 'POST', '/api/admin/users')).toHaveLength(0);
 
-      await form.get('[data-test="new-user-llm-provider"]').setValue('p1');
-      await form.get('[data-test="new-user-main-model"]').setValue('m1');
+      await form.getComponent<typeof ElSelect>('[data-test="new-user-llm-provider"]').setValue('p1');
+      await form.getComponent<typeof ElSelect>('[data-test="new-user-main-model"]').setValue('m1');
       expect((submit.element as HTMLButtonElement).disabled).toBe(false);
 
       const store = useAdminStore(pinia);
@@ -1304,8 +1305,8 @@ describe('AdminView · FDE 用户', () => {
     await aliceRow.get('[data-test="edit-user"]').trigger('click');
 
     const profileForm = wrapper.get('[data-test="user-profile-form"]');
-    await profileForm.findAll('input')[0].setValue('Alice Updated');
-    await profileForm.findAll('input')[1].setValue('alpha-renamed');
+    await profileForm.findAll('input:not(.el-select__input)')[0].setValue('Alice Updated');
+    await profileForm.findAll('input:not(.el-select__input)')[1].setValue('alpha-renamed');
     await profileForm.trigger('submit.prevent');
     await flushPromises();
     const patch = callsTo(fetchFn, 'PATCH', '/api/admin/users/u1')[0];
@@ -1480,7 +1481,7 @@ describe('AdminView · FDE 用户', () => {
     expect(form.get('[data-test="user-email"]').attributes('type')).toBe('email');
     expect(form.get('[data-test="user-email"]').attributes('required')).toBeDefined();
     expect(form.get('[data-test="user-fde-name"]').attributes('required')).toBeDefined();
-    expect(form.get('[data-test="new-user-git-host"]').attributes('required')).toBeDefined();
+    expect(form.getComponent<typeof ElSelect>('[data-test="new-user-git-host"]').attributes('required')).toBeDefined();
     expect(form.text()).toContain('没有可用的 Git host');
     expect((form.get('button[type="submit"]').element as HTMLButtonElement).disabled).toBe(true);
     wrapper.unmount();
@@ -1637,9 +1638,9 @@ describe('AdminView · FDE 用户', () => {
     auth.user = { ...ADMIN_USER, fde_name: 'alice' };
     await flushPromises();
     expect(wrapper.get('h1').text()).toBe('Members & workstations');
-    expect(wrapper.get('.rail-profile strong').text()).toBe('Root');
+    expect(wrapper.get('.account-trigger strong').text()).toBe('Root');
     expect(wrapper.find('[aria-label="Account menu"]').exists()).toBe(true);
-    expect(wrapper.get('.station-mode-switch').text()).toContain('Work');
+    expect(wrapper.get('.rail-menu').text()).toContain('Work');
     expect(wrapper.find('.admin-navigation a[aria-current="page"]').text()).toBe('Members & workstations');
     wrapper.unmount();
   });

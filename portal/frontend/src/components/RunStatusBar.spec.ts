@@ -101,12 +101,12 @@ describe('运行态状态条（● running · round · ↑ 输出量 · ~速率 
     vi.advanceTimersByTime(1000); // 6s：报秒，但**不黄**
     await nextTick();
     expect(wrapper.text()).toContain('等待模型回复中 6s');
-    expect(wrapper.get('.run-status-bar').classes()).not.toContain('bg-amber-50');
+    expect(wrapper.get('.run-status-bar').classes()).not.toContain('stalled');
     expect(wrapper.get('.run-status-dot').classes()).toContain('animate-pulse');
 
     vi.advanceTimersByTime(RUN_STALL_THRESHOLD_MS); // 真到了不对劲的量 ⇒ 黄 + 心跳停
     await nextTick();
-    expect(wrapper.get('.run-status-bar').classes()).toContain('bg-amber-50');
+    expect(wrapper.get('.run-status-bar').classes()).toContain('stalled');
     expect(wrapper.get('.run-status-dot').classes()).not.toContain('animate-pulse');
     expect(wrapper.text()).toContain('等待模型回复中'); // #425：不再说「上游无输出」，而是说在等什么
   });
@@ -121,7 +121,7 @@ describe('运行态状态条（● running · round · ↑ 输出量 · ~速率 
     await nextTick();
     expect(wrapper.text()).toContain('正在执行工具 shell');
     expect(wrapper.text()).toContain('8s');
-    expect(wrapper.get('.run-status-bar').classes()).not.toContain('bg-amber-50');
+    expect(wrapper.get('.run-status-bar').classes()).not.toContain('stalled');
   });
 
   it('#425 本轮 token / 累计 token / 上下文占用：运行中就显示（全是上游真值，不带 ~）', async () => {

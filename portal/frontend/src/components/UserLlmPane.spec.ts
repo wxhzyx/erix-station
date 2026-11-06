@@ -1,3 +1,4 @@
+import { ElSelect, ElOption } from 'element-plus';
 // per-user LLM 配置 pane 单测（issue #61 P3）：
 //   ② 409 active_run_conflict → 展示服务端拒绝原因 + 「确认无影响，强制保存」显式确认按钮；
 //      首次提交绝不带 force 字段，点击确认后才带 force=true 重试（不静默 force）。
@@ -114,26 +115,26 @@ describe('UserLlmPane · LLM 配置表单', () => {
     expect(wrapper.find('input[type="password"]').exists()).toBe(false);
 
     // 主模型下拉：仅 text 且 tool_calling 的启用模型（m1 gpt-4o；m3 无 tool_calling 被过滤）
-    const mainOpts = wrapper.find('[data-test="main-model"]').findAll('option');
-    expect(mainOpts.map((o) => o.text())).toEqual(['（不配置）', 'GPT-4o (gpt-4o)']);
-    expect((wrapper.find('[data-test="main-model"]').element as HTMLSelectElement).value).toBe('m1');
-    expect(wrapper.find('[data-test="main-model"]').attributes('title')).toBe('GPT-4o (gpt-4o)');
+    const mainOpts = wrapper.getComponent<typeof ElSelect>('[data-test="main-model"]').findAllComponents(ElOption);
+    expect(mainOpts.map((o) => o.props('label'))).toEqual(['（不配置）', 'GPT-4o (gpt-4o)']);
+    expect(wrapper.getComponent<typeof ElSelect>('[data-test="main-model"]').props('modelValue')).toBe('m1');
+    expect(wrapper.getComponent<typeof ElSelect>('[data-test="main-model"]').attributes('title')).toBe('GPT-4o (gpt-4o)');
     // 回归：主键（model_id = LiteLLM model_info.id，真实环境是 UUID）不得出现在下拉文本/标题里。
-    expect(wrapper.find('[data-test="main-model"]').text()).not.toContain('pk-m1');
-    expect(wrapper.find('[data-test="embedding-model"]').text()).not.toContain('pk-m2');
-    expect(wrapper.find('[data-test="main-model"]').classes()).toContain('truncate');
+    expect(wrapper.getComponent<typeof ElSelect>('[data-test="main-model"]').text()).not.toContain('pk-m1');
+    expect(wrapper.getComponent<typeof ElSelect>('[data-test="embedding-model"]').text()).not.toContain('pk-m2');
+    expect(wrapper.getComponent<typeof ElSelect>('[data-test="main-model"]').classes()).toContain('el-select');
 
     // embedding 下拉回填 m2；vision 无可选项 → 不配置
-    expect((wrapper.find('[data-test="embedding-model"]').element as HTMLSelectElement).value).toBe('m2');
-    expect((wrapper.find('[data-test="vision-model"]').element as HTMLSelectElement).value).toBe('');
+    expect(wrapper.getComponent<typeof ElSelect>('[data-test="embedding-model"]').props('modelValue')).toBe('m2');
+    expect(wrapper.getComponent<typeof ElSelect>('[data-test="vision-model"]').props('modelValue')).toBe('');
     const actionButtons = wrapper.find('form').findAll('button');
     for (const button of actionButtons) {
-      expect(button.classes()).toEqual(expect.arrayContaining(['min-h-8', 'px-2.5', 'py-1.5', 'text-sm']));
+      expect(button.classes()).toContain('el-button');
     }
 
     // 供应商切到 anthropic：主模型只剩「（不配置）」（其唯一模型未启用）
-    await wrapper.find('[data-test="provider-select"]').setValue('p2');
-    expect(wrapper.find('[data-test="main-model"]').findAll('option').map((o) => o.text())).toEqual(['（不配置）']);
+    await wrapper.getComponent<typeof ElSelect>('[data-test="provider-select"]').setValue('p2');
+    expect(wrapper.getComponent<typeof ElSelect>('[data-test="main-model"]').findAllComponents(ElOption).map((o) => o.props('label'))).toEqual(['（不配置）']);
   });
 
   it('保存成功：不提交上游 key，展示保存状态和只读的虚拟 key 掩码', async () => {
@@ -232,7 +233,7 @@ describe('UserLlmPane · LLM 配置表单', () => {
       return undefined;
     }, FDE_USER, GIT_HOSTS);
 
-    await wrapper.get('[data-test="git-host-select"]').setValue('gh1');
+    await wrapper.getComponent<typeof ElSelect>('[data-test="git-host-select"]').setValue('gh1');
     await wrapper.findAll('form button')[1].trigger('click');
     await flushPromises();
     const provisionCall = fetchFn.mock.calls.find(([url]) => String(url).includes('/provision'));
@@ -240,8 +241,8 @@ describe('UserLlmPane · LLM 配置表单', () => {
     expect(wrapper.find('[data-test="git-credential-form"]').exists()).toBe(true);
 
     const form = wrapper.get('[data-test="git-credential-form"]');
-    await form.findAll('input')[0].setValue('alice-gh');
-    await form.findAll('input')[1].setValue('ghp-secret-value');
+    await form.findAll('input:not(.el-select__input)')[0].setValue('alice-gh');
+    await form.findAll('input:not(.el-select__input)')[1].setValue('ghp-secret-value');
     await form.trigger('submit.prevent');
     await flushPromises();
     const credentialCall = fetchFn.mock.calls.find(([url, init]) =>
@@ -280,9 +281,9 @@ describe('UserLlmPane · 语言切换（issue #101 P3）', () => {
 
     // 「（不配置）」选项英文（三个下拉）
     for (const sel of ['main-model', 'embedding-model', 'vision-model']) {
-      expect(wrapper.find(`[data-test="${sel}"]`).findAll('option')[0].text()).toBe('(not configured)');
+      expect(wrapper.getComponent<typeof ElSelect>(`[data-test="${sel}"]`).findAllComponents(ElOption)[0].props('label')).toBe('(not configured)');
     }
-    expect(wrapper.find('[data-test="main-model"]').findAll('option').map((o) => o.text()))
+    expect(wrapper.getComponent<typeof ElSelect>('[data-test="main-model"]').findAllComponents(ElOption).map((o) => o.props('label')))
       .toEqual(['(not configured)', 'GPT-4o (gpt-4o)']);
   });
 
