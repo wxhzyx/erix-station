@@ -1,8 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDocument, DOCUMENT_LIMITS as L } from '../src/document-parser.js';
-import { documentFixture, officeFixture, pdfFixture, zipFixture } from './helpers/document-fixtures.js';
+import { documentFixture, officeFixture, pdfFixture, zipFixture, visualFixture } from './helpers/document-fixtures.js';
 const parse = (ext, bytes) => parseDocument({ name: `fixture.${ext}`, data: bytes.toString('base64') });
+for (const ext of ['pdf', 'docx', 'xlsx', 'pptx']) {
+  test(`${ext}: image-only documents produce bounded images for the member's vision model`, async () => {
+    const result = await parse(ext, await visualFixture(ext));
+    assert.equal(result.images.length, 1);
+    assert.equal(result.images[0].mime_type, 'image/jpeg');
+    const bytes = Buffer.from(result.images[0].data_base64, 'base64');
+    assert.ok(bytes.length <= L.imageBytes); assert.equal(bytes[0], 255); assert.equal(bytes[1], 216);
+  });
+}
+test('visual pages never silently disappear past the image limit', async () => {
+  for (const ext of ['pdf', 'xlsx']) await assert.rejects(parse(ext, await visualFixture(ext, { images: 6 })), { code: 'document_visual_limit' });
+});
+test('XML decimal and hex references decode once, preserving escaped literal entity text', async () => {
+  const result = await parse('docx', officeFixture('docx', { text: '&#20013;&#x6587; &amp;#65; &lt;x&gt;' }));
+  assert.match(result.text, /中文 &#65; <x>/);
+});
 for (const ext of ['pdf', 'docx', 'xlsx', 'pptx']) {
   test(`${ext}: extracts actual content and discloses representation limits`, async () => {
     const result = await parse(ext, documentFixture(ext));

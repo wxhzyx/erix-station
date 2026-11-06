@@ -9,7 +9,7 @@ export async function readWorkFiles(files: File[], existing: WorkAttachment[] = 
     if (!isDocument(file.name) && file.size > 65536) throw new Error('单个文件不能超过 64 KiB');
     if (!file.name || file.name.length > 255 || /[\x00-\x1f\x7f/\\]/.test(file.name)) throw new Error('文件名无效');
     if (isDocument(file.name)) {
-      const extracted = await extractDocument(file, signal);
+      const extracted = await extractDocument(file, signal, 'work');
       result.push({ kind: 'file', path: `upload:${file.name}`, name: file.name, text: extracted.text, warnings: extracted.warnings });
       continue;
     }

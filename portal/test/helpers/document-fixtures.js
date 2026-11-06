@@ -55,3 +55,31 @@ export function pdfFixture({ empty = false, pages = 1, text = 'Synthetic PDF tex
   return Buffer.from(out);
 }
 export const documentFixture = ext => ext === 'pdf' ? pdfFixture() : officeFixture(ext);
+
+// A real raster page with no text layer: the old parser rejected it as empty.
+export async function visualFixture(ext, { images = 1, text = 'SCAN 73921 TOTAL 84' } = {}) {
+  const { createCanvas, GlobalFonts } = await import('@napi-rs/canvas');
+  const { fileURLToPath } = await import('node:url');
+  GlobalFonts.registerFromPath(fileURLToPath(new URL('../../../node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf', import.meta.url)), 'FixtureSans');
+  const canvas = createCanvas(640, 320), ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 640, 320);
+  ctx.fillStyle = '#000'; ctx.font = '32px FixtureSans'; ctx.fillText(text, 30, 100);
+  const jpeg = canvas.toBuffer('image/jpeg');
+  if (ext !== 'pdf') {
+    const root = { docx: 'word', xlsx: 'xl', pptx: 'ppt' }[ext];
+    return officeFixture(ext, { empty: true, entries: Object.fromEntries(
+      Array.from({ length: images }, (_, i) => [`${root}/media/image${i + 1}.jpeg`, jpeg])) });
+  }
+  const objects = [Buffer.from('<< /Type /Catalog /Pages 2 0 R >>'),
+    Buffer.from(`<< /Type /Pages /Kids [${Array.from({ length: images }, (_, i) => `${4 + i * 2} 0 R`).join(' ')}] /Count ${images} >>`),
+    Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width 640 /Height 320 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`), jpeg, Buffer.from('\nendstream')])];
+  for (let i = 0; i < images; i++) {
+    objects.push(Buffer.from(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 640 320] /Resources << /XObject << /Im1 3 0 R >> >> /Contents ${5 + i * 2} 0 R >>`));
+    const stream = 'q 640 0 0 320 0 0 cm /Im1 Do Q';
+    objects.push(Buffer.from(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`));
+  }
+  const chunks = [Buffer.from('%PDF-1.4\n')], offsets = [0]; let length = chunks[0].length;
+  objects.forEach((obj, i) => { offsets.push(length); const chunk = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`), obj, Buffer.from('\nendobj\n')]); chunks.push(chunk); length += chunk.length; });
+  chunks.push(Buffer.from(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map(n => `${String(n).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${length}\n%%EOF`));
+  return Buffer.concat(chunks);
+}

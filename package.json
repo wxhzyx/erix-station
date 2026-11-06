@@ -1,6 +1,6 @@
 {
   "name": "erix-station",
-  "version": "0.1.57",
+  "version": "0.1.58",
   "private": true,
   "type": "module",
   "description": "FDE Station — 给 FDE 用的开发工位平台（宿主平台）",
@@ -28,6 +28,7 @@
     "pg": "^8.23.0",
     "yaml": "2.9.1",
     "yauzl": "3.4.0",
-    "openid-client": "6.8.8"
+    "openid-client": "6.8.8",
+    "@napi-rs/canvas": "1.1.0"
   }
 }

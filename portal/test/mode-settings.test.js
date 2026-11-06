@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { modeCatalog, getModeSettings, setModeSettings, resolveChatLlmProvider, revokeChatLlmConfig } from '../src/mode-settings.js';
+import { modeCatalog, getModeSettings, setModeSettings, resolveChatLlmProvider, resolveDocumentLlmProvider, revokeChatLlmConfig } from '../src/mode-settings.js';
 
 const secret = 'synthetic-secret-do-not-echo';
 function fixture() {
@@ -194,4 +194,20 @@ test('Qwen text models use explicit gateway vision capability, with false overri
   assert.equal((await resolve()).supportsImages,true);
   delete f.models[0].model_info.metadata.supports_vision;
   assert.equal((await resolve()).supportsImages,false);
+});
+
+test('document vision uses only the requested member mode binding and respects catalog capability', async () => {
+  const f = fixture();
+  f.models[0].model_info.supports_vision = true;
+  await setModeSettings(f.pool, 'alice', 'chat', selection, { gateway: f.gateway });
+  const options = { gateway: f.gateway, gatewayUrl: 'https://gateway.invalid' };
+  assert.equal((await resolveDocumentLlmProvider(f.pool, 'alice', 'chat', options)).api_key, secret);
+  const original = f.pool.query;
+  const binding = { provider_id: 'provider', api_key: 'work-personal-key', main_model_id: 'model-1', main_model_name: 'chat-one' };
+  f.pool.query = async (sql, args) => sql.includes('FROM fde_llm_bindings') ? { rows: args[0] === 'alice' ? [binding] : [] } : original(sql, args);
+  assert.equal((await resolveDocumentLlmProvider(f.pool, 'alice', 'work', options)).api_key, 'work-personal-key');
+  assert.equal(await resolveDocumentLlmProvider(f.pool, 'bob', 'work', options), null);
+  f.models[0].model_info.supports_vision = false;
+  assert.equal(await resolveDocumentLlmProvider(f.pool, 'alice', 'work', options), null);
+  await assert.rejects(resolveDocumentLlmProvider(f.pool, 'alice', 'other', options), { code: 'validation_failed' });
 });

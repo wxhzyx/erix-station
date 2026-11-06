@@ -24,6 +24,7 @@ import * as projectBuilds from './project-builds.js';
 import * as llm from './llm.js';
 import * as chatMode from './chat-mode.js';
 import { parseDocument } from './document-parser.js';
+import { readDocumentImages } from './document-vision.js';
 import * as projectApprovals from './project-approvals.js';
 import { collaborationApi, collaborationHeartbeat } from './collaboration.js';
 import { createApprovalRepository, ApprovalRepositoryError } from './approval-repository.js';
@@ -878,7 +879,7 @@ async function routeApi(req, res, ctx, url) {
     return sendJson(res, 200, await projectApprovals.getProjectApproval(pool, session.user.id, projectApprovalMatch[1]));
   }
 
-  // Stateless extraction: authenticated input bytes only, no paths, storage or model call.
+  // Authenticated bytes only. Visual documents use the current member's model/key.
   // Reserve before reading the body so concurrent large uploads are bounded as well.
   if (pathname === '/api/attachments/extract') {
     const session = await requireSession(req, ctx);
@@ -889,19 +890,35 @@ async function routeApi(req, res, ctx, url) {
       throw new HttpError(429, 'document_busy', '文档解析繁忙，请稍后重试');
     }
     uploads.add(session.user.id);
+    const controller = new AbortController();
+    const disconnect = () => { if (!res.writableFinished) controller.abort(); };
+    res.once('close', disconnect);
     const deadline = setTimeout(() => req.destroy(), 30000);
+    let visionDeadline;
     try {
       const body = await readJsonBody(req, 12 * 1024 * 1024);
-      const result = await parseDocument({ name: body?.name, data: body?.data_base64 });
+      clearTimeout(deadline);
+      const mode = body?.mode ?? 'chat';
+      if (!['chat', 'work'].includes(mode)) throw new HttpError(400, 'document_mode', '模式必须是 chat 或 work');
+      visionDeadline = setTimeout(() => controller.abort(), 180000);
+      const parsed = await parseDocument({ name: body?.name, data: body?.data_base64 });
+      const result = await readDocumentImages(parsed, { signal: controller.signal,
+        resolveProvider: () => modeSettings.resolveDocumentLlmProvider(pool, session.user.id, mode, {
+          gateway: ctx.llmGateway, gatewayUrl: ctx.config.llmGatewayAdminUrl ?? ctx.config.llmGatewayUrl,
+        }),
+      });
       res.setHeader('Cache-Control', 'no-store');
       return sendJson(res, 200, result);
     } catch (err) {
+      if (controller.signal.aborted) throw new HttpError(408, 'document_cancelled', '文件读取已取消或超时');
       if (typeof err.code === 'string' && err.code.startsWith('document_')) {
         throw new HttpError(err.status ?? 422, err.code, err.message);
       }
       throw err;
     } finally {
       clearTimeout(deadline);
+      clearTimeout(visionDeadline);
+      res.removeListener('close', disconnect);
       uploads.delete(session.user.id);
     }
   }
