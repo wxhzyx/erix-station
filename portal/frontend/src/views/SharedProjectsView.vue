@@ -314,10 +314,9 @@ async function merge() {
     :area="embedded ? undefined : 'work'"
     ><main class="collaboration-page" :class="{ embedded }">
       <header class="page-heading">
-        <div>
-          <span class="eyebrow">TEAM WORKSPACE</span>
-          <h1>{{ embedded ? "项目协作" : "共享项目" }}</h1>
-          <p>连接成员、分支与交付，让每一次协作都有清晰的进展。</p>
+        <div v-if="!embedded">
+          <h1>共享项目</h1>
+
         </div>
         <ElButton :loading="busy" @click="action(refresh)">刷新项目</ElButton>
       </header>
@@ -540,7 +539,6 @@ async function merge() {
             >
             <ElTabPane label="交付要求" name="delivery"
               ><section class="delivery-brief">
-                <span class="eyebrow">DELIVERY BRIEF</span>
                 <h3>{{ detail.project.package_name }}</h3>
                 <p class="requirements">
                   {{

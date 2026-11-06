@@ -301,7 +301,7 @@ function jumpToLatest() {
             }}</ElButton
           >
           <div class="workspace-title">
-            <small>{{ locale === "en" ? "DEVELOPMENT" : "开发空间" }}</small>
+
             <h1>
               {{
                 dirShortName || (locale === "en" ? "Workbench" : "开发工作台")

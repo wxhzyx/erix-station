@@ -113,7 +113,7 @@ describe('Admin console routing and layout', () => {
     const { wrapper, router } = await mountAdmin('/admin');
     expect(router.currentRoute.value.path).toBe('/admin/users');
     expect(wrapper.get('h1').text()).toBe('成员与工位');
-    expect(wrapper.findAll('.station-rail')).toHaveLength(1);
+    expect(wrapper.findAll('.station-topbar')).toHaveLength(1);
     expect(wrapper.get('.account-trigger').text()).toContain('Root');
     expect(wrapper.get('.rail-menu').text()).toContain('开发工作台');
     expect(wrapper.find('.station-admin > .station-header').exists()).toBe(false);

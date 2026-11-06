@@ -137,138 +137,32 @@ button:disabled {
 }
 .station-shell {
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
+  grid-template-rows: 60px minmax(0, 1fr);
   height: 100dvh;
   overflow: hidden;
 }
-.station-rail {
+.station-topbar {
   display: flex;
-  flex-direction: column;
-  gap: 28px;
-  padding: 27px 14px 16px;
-  border-right: 1px solid var(--station-line);
+  align-items: center;
+  gap: 24px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--station-line);
   background: #fff;
-  min-height: 0;
-}
-.rail-brand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 0 10px;
-  text-decoration: none;
-}
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 37px;
-  height: 37px;
-  position: relative;
-  border-radius: 12px;
-  background: #365cf5;
-  color: white;
-  font-size: 23px;
-  font-weight: 750;
-  box-shadow: 0 5px 14px #365cf525;
-}
-.brand-mark span {
-  position: absolute;
-  right: 6px;
-  bottom: 5px;
-  font-size: 20px;
-  color: #b9c8ff;
-}
-.brand-caption {
-  display: grid;
-  gap: 3px;
-}
-.brand-caption strong {
-  font-size: 15px;
-  letter-spacing: -0.4px;
-}
-.brand-caption small {
-  font-size: 8px;
-  letter-spacing: 2.2px;
-  color: #9aa4b6;
-}
-.rail-section-label {
-  color: #a0a9ba;
-  font-size: 10px;
-  letter-spacing: 1.6px;
-  padding: 3px 14px 0;
-  margin-bottom: -16px;
-}
-.rail-menu.el-menu {
-  border: 0;
-  background: transparent;
-}
-.rail-menu .el-menu-item {
-  height: 46px;
-  line-height: 46px;
-  border-radius: 9px;
-  margin: 5px 0;
-  color: #738099;
-  font-size: 13px;
-  padding: 0 14px !important;
-  gap: 8px;
-}
-.rail-menu .el-menu-item .el-icon {
-  font-size: 19px;
-}
-.rail-menu .el-menu-item.is-active {
-  background: #edf0ff;
-  color: #365cf5;
-  font-weight: 650;
-}
-.rail-menu .el-menu-item:hover {
-  background: #f5f7fb;
-}
-.rail-bottom {
-  margin-top: auto;
-  display: grid;
-  gap: 17px;
-}
-.rail-quota {
-  padding: 12px 10px;
-  border-radius: 10px;
-  background: #f7f9fd;
-  overflow: hidden;
-}
-.rail-bottom > .el-dropdown {
-  width: 100%;
-}
-.account-trigger {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 9px;
-  padding: 13px 6px 0;
-  border: 0;
-  border-top: 1px solid var(--station-line);
-  background: none;
-  text-align: left;
-  color: var(--station-ink);
-}
-.account-name {
-  flex: 1;
   min-width: 0;
-  display: grid;
-  gap: 4px;
 }
-.account-name strong {
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.account-name small {
-  color: #97a1b2;
-  font-size: 10px;
-}
-.station-surface {
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  background: var(--station-canvas);
-}
+.rail-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
+.brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--station-accent); color: white; font-size: 22px; font-weight: 750; }
+.brand-mark span { display: none; }
+.brand-caption { font-size: 15px; letter-spacing: -.4px; }
+.rail-menu.el-menu { border: 0; background: transparent; min-width: 0; --el-menu-horizontal-height: 44px; }
+.rail-menu .el-menu-item { padding: 0 12px; gap: 6px; border-radius: 8px; font-size: 13px; }
+.rail-menu .el-menu-item .el-icon { font-size: 18px; margin-right: 0; }
+.rail-menu.el-menu--horizontal > .el-menu-item { border-bottom: 0; }
+.rail-menu .el-menu-item.is-active { background: var(--station-soft); }
+.rail-bottom { margin-left: auto; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.account-trigger { display: flex; align-items: center; gap: 8px; padding: 4px; border: 0; background: none; color: var(--station-ink); }
+.account-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.station-surface { min-width: 0; min-height: 0; overflow: auto; background: var(--station-canvas); }
 .workspace-layout {
   height: 100%;
   display: flex;
@@ -607,41 +501,9 @@ button:disabled {
 .compact-label {
   display: none;
 }
-@media (min-width: 1600px) {
-  .station-shell {
-    grid-template-columns: 224px minmax(0, 1fr);
-  }
-}
 @media (max-width: 1100px) {
-  .station-shell {
-    grid-template-columns: 76px minmax(0, 1fr);
-  }
-  .station-rail {
-    padding: 24px 9px 14px;
-  }
-  .rail-brand {
-    padding: 0;
-    justify-content: center;
-  }
-  .brand-caption,
-  .rail-section-label,
-  .rail-menu .el-menu-item > span,
-  .account-name,
-  .account-trigger > .el-icon,
-  .rail-quota {
-    display: none;
-  }
-  .rail-menu .el-menu-item {
-    padding: 0 !important;
-    justify-content: center;
-  }
-  .rail-menu .el-menu-item .el-icon {
-    margin: 0;
-  }
-  .account-trigger {
-    justify-content: center;
-    padding-top: 15px;
-  }
+  .station-topbar { gap: 12px; padding: 0 12px; }
+  .account-name { display: none; }
   .workspace-toolbar {
     padding: 14px 20px;
   }
@@ -656,52 +518,15 @@ button:disabled {
   }
 }
 @media (max-width: 767px) {
-  .station-shell {
-    display: flex;
-    flex-direction: column;
-  }
-  .station-rail {
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border-right: 0;
-    border-bottom: 1px solid var(--station-line);
-    min-height: 63px;
-    flex-shrink: 0;
-  }
-  .brand-mark {
-    height: 30px;
-    width: 30px;
-    font-size: 20px;
-    border-radius: 9px;
-  }
-  .station-rail .rail-menu {
-    display: flex;
-    flex: 1;
-    justify-content: center;
-  }
-  .rail-menu .el-menu-item {
-    width: 39px;
-    height: 40px;
-    line-height: 40px;
-    margin: 0 2px;
-  }
-  .rail-bottom {
-    margin: 0;
-  }
-  .account-trigger {
-    border: 0;
-    padding: 0;
-  }
-  .account-trigger .el-avatar {
-    width: 30px !important;
-    height: 30px !important;
-  }
-  .station-surface {
-    flex: 1;
-    width: 100%;
-  }
+  .station-shell { grid-template-rows: 56px minmax(0, 1fr); }
+  .station-topbar { gap: 6px; padding: 0 8px; }
+  .brand-caption, .account-trigger > .el-icon, .rail-menu .el-menu-item > span { display: none; }
+  .brand-mark { width: 28px; height: 28px; font-size: 20px; }
+  .rail-menu .el-menu-item { padding: 0 9px; }
+  .rail-menu .el-menu-item .el-icon { width: 18px; }
+  .rail-bottom { gap: 4px; }
+  .account-trigger { padding: 2px; }
+  .account-trigger .el-avatar { width: 28px !important; height: 28px !important; }
   .workspace-explorer {
     display: none;
     width: min(320px, 85vw) !important;

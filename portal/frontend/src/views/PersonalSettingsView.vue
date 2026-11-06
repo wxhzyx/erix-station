@@ -22,7 +22,6 @@ const usage = computed(() => route.query.tab === "usage");
   <StationShell area="settings">
     <div class="personal-page">
       <header class="personal-header">
-        <span class="eyebrow">YOUR WORKSPACE</span>
         <div>
           <h1>{{ en ? "Personal settings" : "个人设置" }}</h1>
         </div>

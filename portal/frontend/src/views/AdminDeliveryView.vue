@@ -238,7 +238,6 @@ async function review(id: string, approve: boolean) {
             ><div class="workflow-step">
               <span>01</span>
               <div>
-                <small>PACKAGE LIBRARY</small>
                 <h2>开发交付包</h2>
               </div>
             </div></template
@@ -307,7 +306,6 @@ async function review(id: string, approve: boolean) {
             ><div class="workflow-step">
               <span>02</span>
               <div>
-                <small>PROJECT DELIVERY</small>
                 <h2>下发项目</h2>
               </div>
             </div></template

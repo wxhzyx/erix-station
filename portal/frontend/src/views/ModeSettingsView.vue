@@ -197,17 +197,6 @@ onUnmounted(() => {
 <template>
   <div class="mode-settings-page">
     <main>
-      <div class="settings-intro">
-        <span class="eyebrow">CONFIGURATION</span>
-        <h1>{{ en ? "Your models, your workflow." : "配置你的智能工作流" }}</h1>
-        <p>
-          {{
-            en
-              ? "Assign models to a member. Changes apply only to the selected member and mode."
-              : "为成员分配聊天和开发模型。配置仅对所选用户及模式生效。"
-          }}
-        </p>
-      </div>
       <ElAlert
         v-if="auth.user?.role !== 'admin'"
         :title="en ? 'Administrator access required.' : '仅管理员可配置模型。'"

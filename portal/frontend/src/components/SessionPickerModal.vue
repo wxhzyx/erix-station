@@ -75,7 +75,6 @@ const abs = (iso?: string) => new Date(iso ?? 0).toLocaleString(locale.value);
     <div class="session-browser">
       <header>
         <div>
-          <small>FDE STATION</small>
           <h2>{{ t("picker.title") }}</h2>
         </div>
         <ElButton

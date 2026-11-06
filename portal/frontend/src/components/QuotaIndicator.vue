@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { ElPopover, ElButton, ElProgress } from "element-plus";
+import { ElPopover, ElButton } from "element-plus";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { api } from "../api";
@@ -91,15 +91,7 @@ const format = (n: number) => n.toLocaleString(en.value ? "en-US" : "zh-CN");
         class="quota-indicator"
         :aria-label="`${en ? 'Daily quota used' : '今日额度已用'} ${percent}`"
         @click="router.push('/settings?tab=usage')"
-        ><span class="quota-summary"
-          ><span>{{ en ? "Daily usage" : "今日用量" }}</span
-          ><strong>{{ percent }}</strong></span
-        ><ElProgress
-          v-if="quota && quota.daily_limit > 0"
-          :percentage="Math.min(100, (quota.used / quota.daily_limit) * 100)"
-          :show-text="false"
-          :stroke-width="4"
-          :status="quota.remaining === 0 ? 'exception' : undefined" /></ElButton
+        ><span class="quota-summary"><strong>{{ percent }}</strong></span></ElButton
     ></template>
     <dl v-if="quota" class="quota-details">
       <div>
@@ -173,29 +165,5 @@ const format = (n: number) => n.toLocaleString(en.value ? "en-US" : "zh-CN");
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
-.quota-indicator.el-button {
-  display: block;
-  width: 100%;
-  height: auto;
-  padding: 5px 2px;
-}
-.quota-indicator.el-button > span {
-  display: block;
-  width: 100%;
-}
-.quota-summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 9px;
-  font-size: 10px;
-  color: #8b97ac;
-}
-.quota-summary strong {
-  color: #365cf5;
-  font-size: 11px;
-}
-.quota-indicator :deep(.el-progress-bar__outer) {
-  background: #e7ecf7;
-}
+.quota-summary strong { color: var(--station-accent); font-variant-numeric: tabular-nums; }
 </style>

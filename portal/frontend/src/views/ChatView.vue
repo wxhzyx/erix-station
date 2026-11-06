@@ -372,14 +372,10 @@ onUnmounted(reset);
             }}</ElButton
           >
         </nav>
-        <p class="sidebar-note">
-          {{ en ? "Your ideas start here." : "从一个想法，开启更多可能。" }}
-        </p>
       </aside>
       <main class="chat-canvas">
         <header class="chat-topbar">
           <div>
-            <span class="eyebrow">CHAT SPACE</span>
             <h1>
               {{
                 conversations.find((c) => c.id === selected)?.title ||
@@ -400,15 +396,7 @@ onUnmounted(reset);
         >
           <div v-if="!messages.length && !pending.length" class="chat-welcome">
             <div class="chat-mark">✳</div>
-            <span class="eyebrow">FDE STATION</span>
             <h2>{{ en ? "What’s on your mind?" : "今天，有什么新想法？" }}</h2>
-            <p>
-              {{
-                en
-                  ? "Explore an idea, ask a question, or bring a document."
-                  : "探索想法、提出问题，或上传文档一起讨论。"
-              }}
-            </p>
           </div>
           <article
             v-for="message in [...messages, ...pending]"
@@ -519,13 +507,6 @@ onUnmounted(reset);
               >
             </div>
           </form>
-          <p class="attachment-note">
-            {{
-              en
-                ? "PDF / Office / text / images · 5 files · documents 8 MiB, extracted text 64 KiB each · text/images 1 MiB · total 4 MiB · No scanned PDF OCR"
-                : "PDF / Office / 文本 / 图片 · 最多 5 个 · 文档 8 MiB，提取文本 64 KiB · 文本/图片 1 MiB · 总计 4 MiB · 暂无扫描 PDF OCR"
-            }}
-          </p>
         </div>
       </main>
     </div></StationShell
@@ -592,12 +573,18 @@ onUnmounted(reset);
   height: auto;
   min-height: 42px;
   text-align: left;
-  white-space: normal;
+  white-space: nowrap;
 }
 .conversation-sidebar nav .selected {
   background: white;
   color: #365cf5;
   box-shadow: 0 2px 8px #182a4710;
+}
+.conversation-sidebar nav .el-button :deep(> span) {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sidebar-note {
   margin-top: auto;

@@ -74,9 +74,8 @@ onUnmounted(() => {
   <section class="build-center">
     <header class="build-center__heading">
       <div>
-        <span>DESKTOP DELIVERY</span>
         <h3>测试版本</h3>
-        <p>从当前个人分支生成可下载的桌面测试包。</p>
+
       </div>
       <div class="build-center__actions">
         <ElButton :disabled="busy" @click="act()">刷新</ElButton

@@ -63,8 +63,7 @@ const current = computed(() =>
     <div class="admin-workspace">
       <aside class="admin-navigation" :aria-label="t('admin.tabs.label')">
         <div class="admin-nav-heading">
-          <span>{{ en ? "CONTROL CENTER" : "平台管理中心" }}</span
-          ><strong>{{ t("admin.title") }}</strong>
+          <strong>{{ t("admin.title") }}</strong>
         </div>
         <div v-for="group in groups" :key="group.label" class="admin-nav-group">
           <p>{{ group.label }}</p>
@@ -87,9 +86,7 @@ const current = computed(() =>
       <main class="admin-content">
         <header v-if="current" class="admin-page-heading">
           <div>
-            <span>{{
-              en ? "WORKSPACE ADMINISTRATION" : "工作空间 · 管理控制台"
-            }}</span>
+
             <h1>{{ current.label }}</h1>
           </div>
           <span class="admin-context">FDE Station</span>

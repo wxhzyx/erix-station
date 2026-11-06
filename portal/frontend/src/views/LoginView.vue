@@ -64,7 +64,7 @@ async function onTotpSubmit() {
     <aside class="auth-story">
       <div class="auth-brand">FDE / Station</div>
       <h1>{{ t("login.title") }}</h1>
-      <p>One workspace. Every possibility.</p>
+
     </aside>
     <main class="auth-stage">
       <section class="auth-card">

@@ -12,7 +12,6 @@ import {
   ChatDotRound,
   Monitor,
   FolderOpened,
-  Setting,
   Lock,
   ArrowDown,
 } from "@element-plus/icons-vue";
@@ -51,15 +50,14 @@ async function accountAction(command: string) {
 </script>
 <template>
   <div class="station-shell">
-    <nav class="station-rail" :aria-label="en ? 'Main navigation' : '主导航'">
+    <nav class="station-topbar" :aria-label="en ? 'Main navigation' : '主导航'">
       <router-link to="/" class="rail-brand" aria-label="FDE Station"
         ><span class="brand-mark">F<span>·</span></span
         ><span class="brand-caption"
-          ><strong>FDE Station</strong><small>WORKSPACE</small></span
+          ><strong>FDE Station</strong></span
         ></router-link
       >
-      <div class="rail-section-label">{{ en ? "WORKSPACE" : "工作空间" }}</div>
-      <ElMenu class="rail-menu" :default-active="selected" router>
+      <ElMenu class="rail-menu" mode="horizontal" :ellipsis="false" :default-active="selected" router>
         <ElMenuItem
           index="/chat"
           :aria-label="en ? 'Chat' : '聊天'"
@@ -82,13 +80,6 @@ async function accountAction(command: string) {
           ><span>{{ en ? "Projects" : "项目协作" }}</span></ElMenuItem
         >
         <ElMenuItem
-          index="/settings"
-          :aria-label="en ? 'Settings' : '个人设置'"
-          :title="en ? 'Settings' : '个人设置'"
-          ><ElIcon><Setting /></ElIcon
-          ><span>{{ en ? "Settings" : "个人设置" }}</span></ElMenuItem
-        >
-        <ElMenuItem
           v-if="auth.user?.role === 'admin'"
           index="/admin"
           :aria-label="en ? 'Admin console' : '管理台'"
@@ -106,7 +97,7 @@ async function accountAction(command: string) {
         </div>
         <ElDropdown
           trigger="click"
-          placement="top-start"
+          placement="bottom-end"
           @command="accountAction"
         >
           <button
@@ -117,15 +108,7 @@ async function accountAction(command: string) {
             <ElAvatar :size="34">{{ name.slice(0, 1).toUpperCase() }}</ElAvatar
             ><span class="account-name"
               ><strong>{{ name }}</strong
-              ><small>{{
-                auth.user?.role === "admin"
-                  ? en
-                    ? "Administrator"
-                    : "管理员"
-                  : en
-                    ? "Personal workspace"
-                    : "个人工作空间"
-              }}</small></span
+              ></span
             ><ElIcon><ArrowDown /></ElIcon>
           </button>
           <template #dropdown
