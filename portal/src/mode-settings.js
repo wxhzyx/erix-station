@@ -2,7 +2,7 @@
 // only the server stores chat virtual keys, never the browser or FDE container.
 import { randomUUID } from 'node:crypto';
 import { createLlmGatewayClient } from './llm-gateway.js';
-import { LlmError, listProviders, getFdeLlmEcho, setFdeLlmConfig } from './llm.js';
+import { LlmError, listProviders, getFdeLlmEcho, getFdeLlmConfig, setFdeLlmConfig } from './llm.js';
 
 const invalid = (message) => new LlmError('validation_failed', message);
 const unavailable = () => new LlmError('llm_catalog_unavailable', '模型目录暂时不可用，请稍后重试', { httpStatus: 503 });
@@ -133,6 +133,21 @@ export async function resolveChatLlmProvider(pool, userId, { gatewayUrl, gateway
   }
   if (!gatewayUrl || !row.api_key) throw new LlmError('llm_not_configured', '聊天 API 未配置', { httpStatus: 409 });
   return { base_url: gatewayUrl, api_key: row.api_key, model: row.model_name, supportsImages: model.supports_vision === true };
+}
+
+/** Document vision uses the selected mode's binding, never a master or another user's key. */
+export async function resolveDocumentLlmProvider(pool, userId, mode, options = {}) {
+  if (mode === 'chat') return resolveChatLlmProvider(pool, userId, options);
+  if (mode !== 'work') throw invalid('模式必须是 chat 或 work');
+  await activeUser(pool, userId);
+  const binding = await getFdeLlmConfig(pool, userId);
+  if (!binding?.api_key || !options.gatewayUrl) return null;
+  const catalog = await modeCatalog(options.gateway);
+  const models = catalog.find(provider => provider.id === binding.provider_id)?.models ?? [];
+  const selected = [binding.vision, binding.main].find(slot => slot && models.some(model =>
+    model.id === slot.model_id && model.model_name === slot.name && model.enabled && model.supports_vision));
+  if (!selected) return null;
+  return { base_url: options.gatewayUrl, api_key: binding.api_key, model: selected.name, supportsImages: true };
 }
 
 /** Disabled users cannot send; revoke their server-only virtual key as well.

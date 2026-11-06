@@ -8,6 +8,7 @@ it.each(['pdf', 'docx', 'xlsx', 'pptx'])('work %s extraction preserves text, fil
   const files = await readWorkFiles([new File(['synthetic'], `report.${ext}`)]);
   expect(files[0]).toEqual({ kind:'file',path:`upload:report.${ext}`,name:`report.${ext}`,text:'synthetic extracted data',warnings:['layout warning'] });
   expect(vi.mocked(api).mock.calls[0]?.[0]).toBe('/api/attachments/extract');
+  expect(JSON.parse(vi.mocked(api).mock.calls[0]?.[1]?.body as string).mode).toBe('work');
 });
 it('cancels before dispatch after a file read when the owner changes', async () => {
   const controller = new AbortController();

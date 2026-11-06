@@ -4,6 +4,7 @@ import { DOCUMENT_LIMITS as L } from './document-parser.js';
 
 const fail = (code, message, status = 422) => { throw Object.assign(new Error(message), { code, status, safeDocumentError: true }); };
 const warnings = [];
+const images = [];
 let output = '';
 let truncated = false;
 const notice = '\n[内容已截断：超过解析或 64 KiB 文本限制，请拆分文件。]';
@@ -19,7 +20,10 @@ function add(value) {
 }
 function limit() { truncated = true; }
 const parser = new XMLParser({ preserveOrder: true, ignoreAttributes: false, attributeNamePrefix: '',
-  trimValues: false, parseTagValue: false, parseAttributeValue: false, processEntities: true });
+  trimValues: false, parseTagValue: false, parseAttributeValue: false, processEntities: true,
+  // This parser version gates XML numeric character references on htmlEntities.
+  // Supply only XML's five named entities; never decode the resulting text twice.
+  htmlEntities: { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" } });
 function xml(text) {
   // No DTD/entity definitions (including external entities); only built-in XML escapes.
   if (/<!DOCTYPE|<!ENTITY/i.test(text)) fail('unsafe_xml', '文档包含不支持的 XML 实体或 DTD');
@@ -72,8 +76,9 @@ async function readZip(bytes) {
             fail('unsafe_archive', '文档归档路径无效或重复');
           if (/vbaProject|(?:^|\/)embeddings\//i.test(name)) fail('active_content', '不支持包含宏或嵌入对象的文档，请移除后重试');
           files.set(name, null);
-          // Never extract to disk. Ignore images/binaries and relationships outside the package.
-          if (!/\.(xml|rels)$/i.test(name)) { zip.readEntry(); return; }
+          // Never extract to disk. Only supported internal raster images join XML input.
+          const media = /^(word|xl|ppt)\/media\/[^/]+\.(png|jpe?g|webp)$/i.test(name);
+          if (!media && !/\.(xml|rels)$/i.test(name)) { zip.readEntry(); return; }
           zip.openReadStream(entry, (error, stream) => {
             if (error) return bad(error);
             const chunks = []; let size = 0;
@@ -86,6 +91,7 @@ async function readZip(bytes) {
             stream.on('end', () => {
               if (closed) return;
               try {
+                if (media) { files.set(name, Buffer.concat(chunks)); zip.readEntry(); return; }
                 const value = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
                 if (/<!DOCTYPE|<!ENTITY/i.test(value)) fail('unsafe_xml', '文档包含不支持的 XML 实体或 DTD');
                 files.set(name, value); zip.readEntry();
@@ -121,7 +127,7 @@ function word(files) {
     if (truncated) return;
   } }
   render(doc);
-  warnings.push('Word 仅提取正文段落和表格；图片、页眉页脚、修订语义及版式不保留。');
+  warnings.push('Word 提取正文段落和表格；内嵌图片由视觉模型读取，页眉页脚、修订语义及版式不保留。');
 }
 function excel(files) {
   const book = required(files, 'xl/workbook.xml');
@@ -143,7 +149,7 @@ function excel(files) {
         let value = type === 's' ? strings[Number(raw)] ?? '' : type === 'inlineStr' ? runText(children(cell)) : type === 'b' ? (raw === '1' ? 'TRUE' : 'FALSE') : raw;
         const formula = find(children(cell), 'f')[0];
         if (formula) value += ` [公式：${textOf(children(formula))}；仅缓存结果，未计算]`;
-        values.push(`${attr(cell, 'r') ?? '?'}=${value}`);
+        if (value.trim()) values.push(`${attr(cell, 'r') ?? '?'}=${value}`);
       }
       add(values.join('\t') + '\n');
       if (truncated) break;
@@ -151,7 +157,7 @@ function excel(files) {
     if (truncated) break;
   }
   if (tooMany) limit();
-  warnings.push('Excel 提取工作表、单元格和公式缓存值；不执行公式、不刷新外链，日期可能保留原始序列值，图表与版式不保留。');
+  warnings.push('Excel 提取工作表、单元格和公式缓存值；不执行公式、不刷新外链。内嵌图片由视觉模型读取，原生图表与版式不保留。');
 }
 function powerpoint(files) {
   const presentation = required(files, 'ppt/presentation.xml');
@@ -173,7 +179,7 @@ function powerpoint(files) {
     if (truncated) break;
   }
   if (slides.length > L.slides) limit();
-  warnings.push('PPT 仅提取幻灯片文本、表格文本和备注；图片、图表、动画及版式不保留。');
+  warnings.push('PPT 提取幻灯片文本、表格文本和备注；内嵌图片由视觉模型读取，原生图表、动画及版式不保留。');
 }
 async function pdf(bytes) {
   if (!bytes.subarray(0, 1024).includes(Buffer.from('%PDF-'))) fail('corrupt', 'PDF 文件签名无效');
@@ -186,10 +192,10 @@ async function pdf(bytes) {
     constructor() { throw new Error('Document network access disabled'); }
     bytes() { throw new Error('Document network access disabled'); }
   };
-  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const { getDocument, OPS } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, disableFontFace: true,
     useSystemFonts: false, useWorkerFetch: false, disableAutoFetch: true, disableStream: true, disableRange: true,
-    isOffscreenCanvasSupported: false, isImageDecoderSupported: false, enableXfa: false, verbosity: 0,
+    isOffscreenCanvasSupported: false, isImageDecoderSupported: false, enableXfa: false, verbosity: 0, useWasm: false,
     // No URL or CMap/font/wasm URL supplied: text extraction never fetches resources.
   });
   try {
@@ -209,6 +215,17 @@ async function pdf(bytes) {
         if (item.hasEOL) { add('\n'); lastY = null; lastEnd = null; }
         if (truncated) break;
       }
+      const operators = await page.getOperatorList();
+      if (operators.fnArray.some(op => [OPS.paintImageXObject, OPS.paintInlineImageXObject, OPS.paintImageMaskXObject].includes(op))) {
+        checkImageCount();
+        const viewport = page.getViewport({ scale: 1 });
+        const scale = Math.min(2, L.imageSide / Math.max(viewport.width, viewport.height));
+        const view = page.getViewport({ scale });
+        const { createCanvas } = await import('@napi-rs/canvas');
+        const canvas = createCanvas(Math.ceil(view.width), Math.ceil(view.height));
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: view }).promise;
+        addCanvas(canvas, `第 ${n} 页`);
+      }
       page.cleanup(); if (truncated) break;
     }
     if (doc.numPages > L.pages) limit();
@@ -216,7 +233,30 @@ async function pdf(bytes) {
     if (error.name === 'PasswordException') fail('encrypted', '不支持加密 PDF，请先移除密码');
     throw error;
   } finally { await task.destroy(); }
-  warnings.push('PDF 按文本位置提取；表格列以空白/制表符近似，复杂表格、阅读顺序和图片可能丢失；不支持扫描件 OCR。');
+  warnings.push('PDF 提取文本；含图片的页面由视觉模型读取，模糊文字可能无法辨认。');
+}
+function checkImageCount() {
+  if (images.length >= L.imageCount) fail('visual_limit', '文档包含超过 5 页图片或 5 张插图，请拆分后上传', 413);
+}
+function addCanvas(canvas, label) {
+  const bytes = canvas.toBuffer('image/jpeg', 85);
+  canvas.width = 1; canvas.height = 1;
+  if (bytes.length > L.imageBytes) fail('visual_limit', '文档图片过于复杂，请拆分或降低分辨率后上传', 413);
+  images.push({ label, mime_type: 'image/jpeg', data_base64: bytes.toString('base64') });
+}
+async function officeImages(files) {
+  const { loadImage, createCanvas } = await import('@napi-rs/canvas');
+  for (const [name, bytes] of files) {
+    if (!Buffer.isBuffer(bytes)) continue;
+    checkImageCount();
+    const image = await loadImage(bytes);
+    if (!image.width || !image.height || image.width * image.height > L.imagePixels) fail('visual_limit', '文档图片分辨率过大', 413);
+    const scale = Math.min(1, L.imageSide / Math.max(image.width, image.height));
+    const canvas = createCanvas(Math.ceil(image.width * scale), Math.ceil(image.height * scale));
+    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    addCanvas(canvas, name);
+  }
 }
 try {
   const input = []; let inputSize = 0;
@@ -236,13 +276,14 @@ try {
     if (workerData.ext === 'docx') word(files);
     else if (workerData.ext === 'xlsx') excel(files);
     else powerpoint(files);
+    if ([...files.values()].some(Buffer.isBuffer)) await officeImages(files);
   }
   // Structural labels alone do not count as extracted user content.
   const substantive = output.replace(/\[(?:第 \d+ 页|工作表：[^\]]*|幻灯片 \d+|演讲者备注)\]/g, '').trim();
-  if (!substantive) fail('empty', '未提取到可读文本；空文档、图片/扫描 PDF 需先 OCR 或转为文本');
+  if (!substantive && !images.length) fail('empty', '文档中没有可读取的文字或图片，请检查文件内容');
   if (truncated) { output += notice; warnings.push('内容已截断，请拆分文件以读取剩余内容。'); }
   output += '\n[解析说明]\n' + warnings.join('\n');
-  process.stdout.write(JSON.stringify({ result: { text: output.trim(), warnings } }));
+  process.stdout.write(JSON.stringify({ result: { text: output.trim(), warnings, ...(images.length ? { images } : {}) } }));
 } catch (error) {
   process.stdout.write(JSON.stringify({ error: { code: error.safeDocumentError ? error.code : 'corrupt', message: error.safeDocumentError ? error.message : '文档损坏、格式不符或无法解析', status: error.safeDocumentError ? error.status : 422 } }));
 }

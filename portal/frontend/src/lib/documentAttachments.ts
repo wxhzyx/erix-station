@@ -19,14 +19,14 @@ export function readBase64(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
-export async function extractDocument(file: File, signal?: AbortSignal): Promise<{ name: string; text: string; warnings: string[] }> {
+export async function extractDocument(file: File, signal?: AbortSignal, mode: 'chat' | 'work' = 'chat'): Promise<{ name: string; text: string; warnings: string[] }> {
   if (file.size > DOCUMENT_MAX_BYTES) throw new Error('文档单个最多 8 MiB / Maximum document size: 8 MiB');
   signal?.throwIfAborted();
   const data_base64 = await readBase64(file);
   // A completed file read must not send the previous user's data under a new login.
   signal?.throwIfAborted();
   const result = await api<{ name: string; text: string; warnings: string[] }>('/api/attachments/extract', {
-    method: 'POST', signal, body: JSON.stringify({ name: file.name, data_base64 }),
+    method: 'POST', signal, body: JSON.stringify({ name: file.name, data_base64, mode }),
   });
   signal?.throwIfAborted();
   if (typeof result.text !== 'string' || new TextEncoder().encode(result.text).length > 65536 || !Array.isArray(result.warnings)) throw new Error('文档解析响应无效 / Invalid extraction response');

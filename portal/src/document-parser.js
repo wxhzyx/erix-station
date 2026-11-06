@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url';
 
 export const DOCUMENT_LIMITS = Object.freeze({ inputBytes: 8 * 1024 * 1024, textBytes: 65536,
   entries: 2048, entryBytes: 4 * 1024 * 1024, expandedBytes: 32 * 1024 * 1024,
-  pages: 200, sheets: 50, slides: 200, cells: 100000, timeoutMs: 15000, workers: 2, addressSpaceBytes: 1024 * 1024 * 1024 });
+  pages: 200, sheets: 50, slides: 200, cells: 100000, timeoutMs: 15000, workers: 2, addressSpaceBytes: 1024 * 1024 * 1024,
+  imageCount: 5, imageBytes: 1024 * 1024, imagePixels: 16000000, imageSide: 1600 });
 export function documentError(code, message, status = 422) {
   return Object.assign(new Error(message), { code: `document_${code}`, status });
 }
@@ -44,7 +45,7 @@ export function runDocumentProcess({ name, data, ext }, {
         process.execPath, '--jitless',
         ...(process.allowedNodeEnvironmentFlags.has('--no-experimental-fetch') ? ['--no-experimental-fetch'] : []), '--max-old-space-size=256', '--max-semi-space-size=16',
         scriptPath,
-      ], { stdio: ['pipe', 'pipe', 'pipe'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8', NODE_ENV: 'production', MALLOC_ARENA_MAX: '2', UV_THREADPOOL_SIZE: '1', RAYON_NUM_THREADS: '1' } });
+      ], { stdio: ['pipe', 'pipe', 'pipe'], env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8', NODE_ENV: 'production', MALLOC_ARENA_MAX: '2', UV_THREADPOOL_SIZE: '1', RAYON_NUM_THREADS: '1', DISABLE_SYSTEM_FONTS_LOAD: '1' } });
       child.stderr.resume(); // Do not log document contents or native diagnostics.
       let settled = false; let outputBytes = 0; const chunks = [];
       let failure;
@@ -52,7 +53,7 @@ export function runDocumentProcess({ name, data, ext }, {
       const timer = setTimeout(() => kill(documentError('timeout', '文档解析超时，请拆分文件后重试')), timeoutMs);
       child.stdout.on('data', chunk => {
         outputBytes += chunk.length;
-        if (outputBytes > 256 * 1024) kill(documentError('failed', '文档解析输出超限'));
+        if (outputBytes > 8 * 1024 * 1024) kill(documentError('failed', '文档解析输出超限'));
         else chunks.push(chunk);
       });
       child.stdin.on('error', () => {}); // Early resource exits can close stdin (EPIPE).
@@ -65,7 +66,10 @@ export function runDocumentProcess({ name, data, ext }, {
         try {
           const message = JSON.parse(Buffer.concat(chunks).toString('utf8'));
           if (message.error) reject(documentError(message.error.code, message.error.message, message.error.status));
-          else if (typeof message.result?.text === 'string' && Buffer.byteLength(message.result.text) <= DOCUMENT_LIMITS.textBytes && Array.isArray(message.result.warnings))
+          else if (typeof message.result?.text === 'string' && Buffer.byteLength(message.result.text) <= DOCUMENT_LIMITS.textBytes && Array.isArray(message.result.warnings)
+            && (message.result.images === undefined || (Array.isArray(message.result.images) && message.result.images.length <= DOCUMENT_LIMITS.imageCount
+              && message.result.images.every(image => image.mime_type === 'image/jpeg' && typeof image.data_base64 === 'string'
+                && image.data_base64.length <= Math.ceil(DOCUMENT_LIMITS.imageBytes / 3) * 4 && typeof image.label === 'string'))))
             resolve({ name, ...message.result });
           else reject(documentError('failed', '文档解析结果无效'));
         } catch { reject(documentError('failed', '文档解析结果无效')); }

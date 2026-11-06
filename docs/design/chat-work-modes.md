@@ -100,7 +100,8 @@ The shared `POST /api/attachments/extract` accepts `{name, data_base64}` and ret
 `{name, text, warnings}`. It requires the same login, mandatory-password-change,
 and same-origin write guards as the message routes; request bodies cannot select
 another user or a server filesystem path. Extraction is stateless: no public URL,
-raw document storage, model call, credential, or runner command is created.
+raw document storage, credential, or runner command is created. Since 0.1.58,
+image-bearing documents additionally call the member's assigned vision model.
 The browser sends extracted text through the existing text attachment contract;
 chat prompts and canonical work turns therefore contain actual document text,
 including queued delivery and recalled drafts. The original filename is retained.
@@ -123,9 +124,9 @@ charts, embedded media, formulas recalculated by Excel, and visual layout are no
 reproduced. No macros, embedded programs, external links, or document instructions
 are executed. Legacy `.doc`, `.xls`, `.ppt` must first be converted to their modern
 formats. Encrypted documents must be decrypted before upload. Image-only/scanned
-PDFs require OCR elsewhere; this implementation does not call an OCR service or
-pretend that image pixels were read. Empty or unreadable files return an actionable
-error rather than sending only a filename to the model.
+PDFs and Office embedded PNG/JPEG/WebP images are read through the member's
+assigned vision model. Truly empty or unreadable files return an actionable error
+rather than sending only a filename to the model.
 
 The portal runtime now requires Node >=22.13.0; its existing `node:22-slim` Docker
 base and dependency install stage support the pinned parser packages. Rebuild the
@@ -162,6 +163,35 @@ legacy vision models without that flag retain support. Qwen may therefore remain
 tool-calling text model while accepting original image bytes through `image_url`.
 This does not imply native PDF/Office support. Document text extraction remains the
 compatibility path; the current work `appendUserTurn` contract accepts text only.
+
+### Visual documents (0.1.58)
+
+`POST /api/attachments/extract` additionally accepts `mode: "chat" | "work"`
+(default chat for old clients). Text-only documents require no model call. PDF pages
+containing raster images are rendered in the same bounded parser subprocess;
+Office embedded PNG/JPEG/WebP images are decoded there. Each request is limited to
+five visual pages/images, 1600 px on the longest side and 1 MiB JPEG per image.
+Excess images fail explicitly rather than silently discarding pages. Macros, external
+relationships and embedded programs remain rejected/ignored as before.
+
+The portal sends these images to the authenticated member's assigned model using
+their existing mode-specific virtual key. Work selects its explicit vision slot or
+its vision-capable main model; it never borrows the chat key. Model capability and
+current catalog identity are checked. Recognition is charged by the existing
+LiteLLM personal quota even if the user subsequently discards the attachment.
+No master key, document bytes or image URLs reach the browser. The recognized
+content is returned as text with the original filename, so both chat and the
+text-only work engine can consume it. Recognition does not execute document
+instructions or tools. Ambiguous content is marked unreadable; truncated model
+output is rejected. Image recognition can take up to 150 seconds; disconnect or
+navigation cancels the model request and the per-user upload slot is then released.
+The upload-body timeout remains 30 seconds; the entire post-upload processing
+deadline is 180 seconds. Normal 64 KiB output and archive/CPU/memory limits remain.
+
+Canvas 1.1.0 is now an explicit pinned dependency (previously optional through
+PDF.js). The child disables automatic host/user font loading; native allocation
+stays under `prlimit`. XML numeric character references are decoded exactly once,
+including Chinese text emitted by spreadsheet generators.
 
 The FDE quota callback now accepts inline PNG/JPEG/WebP for the Qwen alias.
 It reserves the configured 131072-token context upper bound for the whole visual
