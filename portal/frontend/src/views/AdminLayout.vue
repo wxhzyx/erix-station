@@ -33,6 +33,10 @@ const groups = computed(() => [
         label: en.value ? "Members & workstations" : "成员与工位",
       },
       {
+        path: "/admin/member-usage",
+        label: en.value ? "Member usage" : "成员用量",
+      },
+      {
         path: "/admin/quotas",
         label: en.value ? "Token quotas" : "额度与申请",
       },
