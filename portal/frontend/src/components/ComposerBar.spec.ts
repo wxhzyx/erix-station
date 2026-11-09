@@ -223,13 +223,13 @@ describe('work upload interruption', () => {
 
 it('retains oversized recalled attachment sets and explains splitting/removal', async () => {
   const { store, wrapper } = setup();
-  store.pendingAttachments = Array.from({ length: 9 }, (_, index) => ({ kind: 'file', path: `upload:${index}.txt`, name: `${index}.txt`, text: 'retained' }));
+  store.pendingAttachments = Array.from({ length: 11 }, (_, index) => ({ kind: 'file', path: `upload:${index}.txt`, name: `${index}.txt`, text: 'retained' }));
   await flushPromises();
   expect(wrapper.text()).toContain('取回的文件超出单次发送限制');
-  expect(store.pendingAttachments).toHaveLength(9);
+  expect(store.pendingAttachments).toHaveLength(11);
   expect(wrapper.get('[aria-label="移除 0.txt"]').attributes('disabled')).toBeUndefined();
   await wrapper.get('[aria-label="移除 0.txt"]').trigger('click');
-  expect(store.pendingAttachments).toHaveLength(8);
+  expect(store.pendingAttachments).toHaveLength(10);
   expect(wrapper.text()).not.toContain('取回的文件超出单次发送限制');
 });
 
@@ -267,4 +267,12 @@ it('drops work files into the composer without sending and respects disabled sta
   store.noDir=true;await flushPromises();
   await wrapper.get('textarea').trigger('drop',{dataTransfer});await flushPromises();
   expect(store.pendingAttachments).toHaveLength(1);
+});
+
+it('does not show stale recalled-file limits for ten attachments including a 10 MiB text', async () => {
+  const {store,wrapper}=setup();
+  store.pendingAttachments=Array.from({length:10},(_,i)=>({kind:'file',path:`upload:${i}.txt`,name:`${i}.txt`,text:i===0?'x'.repeat(10*1024*1024):'ok'}));
+  await flushPromises();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  expect(wrapper.findAll('[aria-label^="移除 "]')).toHaveLength(10);
 });
