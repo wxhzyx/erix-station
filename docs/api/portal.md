@@ -2407,7 +2407,7 @@ store adapter 契约（runner §9.1）的落库端点；`transcript_rounds.recor
 | `messages` | array（可空），元素 `{role, content, ...}` | 该轮 canonical 消息数组；`role` ∈ `user`/`assistant`（judge 注入为 user role 合成消息） |
 | `foldedPayload` | object \| `null` | `folded: true` 时必填；fold 后的展示载荷 |
 
-**大小限制**：单轮请求体 ≤ **1MB** ⚠️，越界 → `400 validation_failed`。
+**大小限制**：单轮请求体默认 ≤ **404 MiB**（覆盖 100 MiB 附件及嵌套 JSON 转义；`MAX_ROUND_BYTES` 可覆盖） ⚠️，越界 → `400 validation_failed`。
 
 响应 `200`：
 
@@ -2610,7 +2610,7 @@ query 参数 + `X-Claim-Token` 头——writer run 必须属于该 session（否
 | 端点 | 语义 |
 |---|---|
 | `GET /api/internal/transcript/:key` | load 全量（`limit`/`cursor` 分页；**cursor 是不透明串** `<round>:<append_seq>`，见下「S1 分页」） |
-| `PUT /api/internal/transcript/:key/rounds/:round` | appendRound（body = RoundRecord 全量，dedupKey 必填 ≤256 字符，body ≤1MB） |
+| `PUT /api/internal/transcript/:key/rounds/:round` | appendRound（body = RoundRecord 全量，dedupKey 必填 ≤256 字符，body 默认 ≤404 MiB，`MAX_ROUND_BYTES` 可覆盖） |
 | `PUT /api/internal/transcript/:key/checkpoint` | saveCheckpoint / appendCheckpoint（revision CAS，旧 revision 409 `checkpoint_stale`） |
 | `GET /api/internal/transcript/:key/checkpoint/latest` | loadLatestCheckpoint；无 → 204 |
 | `PUT /api/internal/transcript/:key/runstate` | saveRunState `{run_state}` / markRunState 终态标记 `{state}`（合并写，blob 并入 `runId = :key`，引擎契约 `loadRunState(key).runId === key`）；不动 `runs.status` |

@@ -17,11 +17,11 @@ it('cancels before dispatch after a file read when the owner changes', async () 
   await expect(pending).rejects.toThrow();
   expect(api).not.toHaveBeenCalled();
 });
-it('enforces extracted output and aggregate budgets', async () => {
-  vi.mocked(api).mockResolvedValue({ text: 'a'.repeat(65537), warnings: [] });
+it('enforces 10 MiB output and allows ten extracted files above the old 64 KiB cap', async () => {
+  vi.mocked(api).mockResolvedValue({ text: 'a'.repeat(10 * 1024 * 1024 + 1), warnings: [] });
   await expect(readWorkFiles([new File(['x'], 'report.pdf')])).rejects.toThrow('响应');
-  vi.mocked(api).mockResolvedValue({ text: 'a'.repeat(65536), warnings: [] });
-  await expect(readWorkFiles(Array.from({length:5},(_,i) => new File(['x'], `${i}.docx`)))).rejects.toThrow('256 KiB');
+  vi.mocked(api).mockResolvedValue({ text: 'a'.repeat(128 * 1024), warnings: [] });
+  expect(await readWorkFiles(Array.from({length:10},(_,i) => new File(['x'], `${i}.docx`)))).toHaveLength(10);
 });
 it.each(['doc', 'xls', 'ppt'])('rejects legacy %s with conversion guidance', async ext => {
   await expect(readWorkFiles([new File(['x'], `old.${ext}`)])).rejects.toThrow('转换');

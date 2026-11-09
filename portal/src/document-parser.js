@@ -1,8 +1,9 @@
+import { ATTACHMENT_LIMITS } from './attachment-limits.js';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const DOCUMENT_LIMITS = Object.freeze({ inputBytes: 8 * 1024 * 1024, textBytes: 65536,
-  entries: 2048, entryBytes: 4 * 1024 * 1024, expandedBytes: 32 * 1024 * 1024,
+export const DOCUMENT_LIMITS = Object.freeze({ inputBytes: ATTACHMENT_LIMITS.fileBytes, textBytes: ATTACHMENT_LIMITS.fileBytes,
+  entries: 2048, entryBytes: 16 * 1024 * 1024, expandedBytes: 64 * 1024 * 1024,
   pages: 200, sheets: 50, slides: 200, cells: 100000, timeoutMs: 15000, workers: 2, addressSpaceBytes: 1024 * 1024 * 1024,
   imageCount: 5, imageBytes: 1024 * 1024, imagePixels: 16000000, imageSide: 1600 });
 export function documentError(code, message, status = 422) {
@@ -17,11 +18,11 @@ export async function parseDocument({ name, data } = {}) {
   if (!['pdf', 'docx', 'xlsx', 'pptx'].includes(ext))
     throw documentError('unsupported', '仅支持 PDF、DOCX、XLSX、PPTX；旧版 DOC/XLS/PPT 请先另存为新版格式，宏文件不支持', 415);
   if (typeof data !== 'string' || data.length > Math.ceil(DOCUMENT_LIMITS.inputBytes / 3) * 4)
-    throw documentError('size', '文档大小超限（最大 8 MiB）', 413);
+    throw documentError('size', '文档大小超限（最大 10 MiB）', 413);
   if (!data.length || data.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data))
     throw documentError('encoding', '文档编码无效或文件为空', 400);
   const bytes = Buffer.from(data, 'base64');
-  if (bytes.length > DOCUMENT_LIMITS.inputBytes) throw documentError('size', '文档大小超限（最大 8 MiB）', 413);
+  if (bytes.length > DOCUMENT_LIMITS.inputBytes) throw documentError('size', '文档大小超限（最大 10 MiB）', 413);
   if (bytes.toString('base64') !== data) throw documentError('encoding', '文档编码无效', 400);
   if (active >= DOCUMENT_LIMITS.workers) throw documentError('busy', '文档解析繁忙，请稍后重试', 429);
   active++;
@@ -53,7 +54,7 @@ export function runDocumentProcess({ name, data, ext }, {
       const timer = setTimeout(() => kill(documentError('timeout', '文档解析超时，请拆分文件后重试')), timeoutMs);
       child.stdout.on('data', chunk => {
         outputBytes += chunk.length;
-        if (outputBytes > 8 * 1024 * 1024) kill(documentError('failed', '文档解析输出超限'));
+        if (outputBytes > 2 * DOCUMENT_LIMITS.textBytes + DOCUMENT_LIMITS.imageCount * Math.ceil(DOCUMENT_LIMITS.imageBytes / 3) * 4 + 65536) kill(documentError('failed', '文档解析输出超限'));
         else chunks.push(chunk);
       });
       child.stdin.on('error', () => {}); // Early resource exits can close stdin (EPIPE).

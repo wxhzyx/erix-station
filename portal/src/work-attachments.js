@@ -1,9 +1,10 @@
+import { ATTACHMENT_LIMITS } from './attachment-limits.js';
 // Work attachments are data, never server filesystem references. Text is embedded
 // in the canonical user turn so the runner sees it after restarts and queue delivery.
-export const WORK_ATTACHMENT_LIMITS = Object.freeze({ count: 8, fileBytes: 65536, totalBytes: 262144 });
+export const WORK_ATTACHMENT_LIMITS = ATTACHMENT_LIMITS;
 export function validateWorkAttachments(raw, fail) {
   if (raw !== undefined && !Array.isArray(raw)) fail('attachments 必须为数组');
-  if ((raw ?? []).length > WORK_ATTACHMENT_LIMITS.count) fail('最多上传 8 个文件');
+  if ((raw ?? []).length > WORK_ATTACHMENT_LIMITS.count) fail('最多上传 10 个文件');
   let total = 0;
   return (raw ?? []).map(a => {
     if (!a || typeof a !== 'object' || !['file', 'image'].includes(a.kind) || typeof a.path !== 'string' || !a.path) fail('附件格式无效');
@@ -15,7 +16,7 @@ export function validateWorkAttachments(raw, fail) {
     if (typeof a.text !== 'string' || /[\x00-\x08\x0b\x0c\x0e-\x1f\ufffd]/.test(a.text)) fail('仅支持 UTF-8 文本或源代码文件');
     const bytes = Buffer.byteLength(a.text, 'utf8');
     total += bytes;
-    if (bytes > WORK_ATTACHMENT_LIMITS.fileBytes || total > WORK_ATTACHMENT_LIMITS.totalBytes) fail('文件大小超限：单个 64 KiB，合计 256 KiB');
+    if (bytes > WORK_ATTACHMENT_LIMITS.fileBytes || total > WORK_ATTACHMENT_LIMITS.totalBytes) fail('文件大小超限：单个 10 MiB，合计 100 MiB');
     return { kind: 'file', path: `upload:${a.name}`, name: a.name, text: a.text };
   });
 }

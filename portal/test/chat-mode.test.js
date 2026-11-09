@@ -45,9 +45,8 @@ test('reject unsupported, invalid encoding, binary, traversal, excess count and 
   for (const attachments of [
     [{ ...textFile, mime_type: 'application/pdf' }], [{ ...textFile, data_base64: 'bad!' }],
     [{ ...textFile, data_base64: '/w==' }], [{ ...textFile, data_base64: 'AA==' }],
-    [{ ...textFile, name: '../secret' }], Array(6).fill(textFile),
+    [{ ...textFile, name: '../secret' }], Array(11).fill(textFile),
     [{ ...textFile, data_base64: Buffer.alloc(CHAT_LIMITS.fileBytes + 1, 65).toString('base64') }],
-    Array(5).fill({ ...textFile, data_base64: Buffer.alloc(CHAT_LIMITS.fileBytes, 65).toString('base64') }),
     [{ ...textFile, mime_type: 'image/png' }],
   ]) assert.throws(() => validateChatBody({ ...body(), attachments }), { code: 'validation_failed' });
   assert.throws(() => validateChatBody(body('')), { code: 'validation_failed' });
@@ -123,4 +122,13 @@ test('streams only safe text before commit and rolls back a cancelled turn', asy
   complete:async({stream,onDelta,signal})=>{assert.equal(stream,true);await onDelta('Live '+provider.api_key.slice(0,5));assert.deepEqual(seen,['Live ']);assert.equal(pool.rows().length,0);await onDelta(provider.api_key.slice(5));controller.abort();signal.throwIfAborted();}
  }),{code:'llm_upstream_failed'});
  assert.deepEqual(seen,['Live ','[redacted]']);assert.equal(pool.rows().length,0);assert.equal(pool.released(),1);
+});
+
+test('10 MiB attachment survives validation and provider context alongside nine other files', async () => {
+  const text = ' '.repeat(CHAT_LIMITS.fileBytes - 4) + 'TAIL';
+  const attachments = [{...textFile,data_base64:Buffer.from(text).toString('base64')},...Array(9).fill(textFile)];
+  const result=await sendChatMessage(fakePool(),owner,id,{...body(),attachments},{resolveProvider:async()=>provider,complete:async({messages})=>{
+    assert.ok(messages[0].content[1].text.endsWith('TAIL'));assert.equal(messages[0].content.length,11);return {text:'ok'};
+  }});
+  assert.equal(result.messages[0].attachments[0].size,CHAT_LIMITS.fileBytes);
 });

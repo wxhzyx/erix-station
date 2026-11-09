@@ -1,3 +1,4 @@
+import { DOCUMENT_BODY_BYTES, CHAT_BODY_BYTES, WORK_BODY_BYTES, ATTACHMENT_TRANSCRIPT_BYTES } from './attachment-limits.js';
 // HTTP 服务：零框架 node:http 路由分发。
 // 端点：GET /healthz、GET /api/health、POST /api/auth/login（口令→pending_token）、
 //       POST /api/auth/login/totp（TOTP→session cookie）、POST /api/auth/logout、GET /api/me + 静态页面。
@@ -896,7 +897,7 @@ async function routeApi(req, res, ctx, url) {
     const deadline = setTimeout(() => req.destroy(), 30000);
     let visionDeadline;
     try {
-      const body = await readJsonBody(req, 12 * 1024 * 1024);
+      const body = await readJsonBody(req, DOCUMENT_BODY_BYTES);
       clearTimeout(deadline);
       const mode = body?.mode ?? 'chat';
       if (!['chat', 'work'].includes(mode)) throw new HttpError(400, 'document_mode', '模式必须是 chat 或 work');
@@ -953,7 +954,7 @@ async function routeApi(req, res, ctx, url) {
     }
     if (req.method === 'POST' && chatMatch[2]) {
       requireJson(req);
-      const body = await readJsonBody(req, 6 * 1024 * 1024);
+      const body = await readJsonBody(req, CHAT_BODY_BYTES);
       const send = (options = {}) => chatMode.sendChatMessage(pool, session.user.id, chatMatch[1], body, {
         ...options,
         resolveProvider: (userId, db) => modeSettings.resolveChatLlmProvider(db, userId, {
@@ -1956,7 +1957,7 @@ function queuedInputDeps(ctx) {
 async function handlePostQueuedInput(req, res, ctx, sessionId) {
   const session = await requireSession(req, ctx);
   requireJson(req);
-  const body = await readJsonBody(req, 2 * 1024 * 1024);
+  const body = await readJsonBody(req, WORK_BODY_BYTES);
   // 校验前置到幂等包装之前（F3 口径，同 handlePostMessage）：非法体 400 且不占幂等占位行。
   // `kind` 缺省 = `steer`（前端主键 Enter 的动作，也是旧客户端不传 kind 时唯一的合理默认）。
   // ⚠ 缺省必须在**算 requestHash 之前**定形：否则「不传 kind」与「传 steer」的同 key 重试会被
@@ -2042,7 +2043,7 @@ async function handlePostMessage(req, res, ctx, sessionId) {
   const session = await requireSession(req, ctx);
   requireJson(req);
   // 先读体（与其它端点一致：413/400 行为不受密钥校验影响），再校验体与 Idempotency-Key 头
-  const body = await readJsonBody(req, 2 * 1024 * 1024);
+  const body = await readJsonBody(req, WORK_BODY_BYTES);
   // F3：请求体校验**前置到幂等包装之前**——非法体 400 且不占幂等占位行；
   // 否则首次非法体占位后，同 key 的合法重试会因 request_hash 不同撞 409 idempotency_key_reuse。
   const { content, attachments } = sessions.validateMessageBody(body);
@@ -3342,8 +3343,8 @@ async function handleGetProject(req, res, ctx, projectId) {
 // ---------------------------------------------------------------------------
 
 const INTERNAL_EVENTS_LIMIT = 320 * 1024; // 事件批 256KB 载荷 + 信封冗余
-const INTERNAL_ROUND_LIMIT = 1.5 * 1024 * 1024; // transcript round 1MB + 信封冗余
-const INTERNAL_CHECKPOINT_LIMIT = 2 * 1024 * 1024; // checkpoint snapshot 可较大
+const INTERNAL_ROUND_LIMIT = ATTACHMENT_TRANSCRIPT_BYTES; // 上传文本和转义后的 transcript 信封
+const INTERNAL_CHECKPOINT_LIMIT = ATTACHMENT_TRANSCRIPT_BYTES; // 同一上传内容可进入恢复快照
 
 function bearerToken(req) {
   const header = req.headers.authorization || '';

@@ -1,3 +1,4 @@
+import { ATTACHMENT_LIMITS } from './attachment-limits.js';
 // Project-free chat. This module never schedules a runner or enables tools.
 import { randomUUID, createHash } from 'node:crypto';
 import { createSecretFilter } from './llm-stream.js';
@@ -10,7 +11,7 @@ export class ChatModeError extends Error {
 }
 const fail = (message) => { throw new ChatModeError('validation_failed', message); };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const CHAT_LIMITS = Object.freeze({ files: 5, fileBytes: 1024 * 1024, totalBytes: 4 * 1024 * 1024, contentChars: 100000, messages: 100, contextBytes: 8 * 1024 * 1024 });
+export const CHAT_LIMITS = Object.freeze({ files: ATTACHMENT_LIMITS.count, fileBytes: ATTACHMENT_LIMITS.fileBytes, totalBytes: ATTACHMENT_LIMITS.totalBytes, contentChars: 100000, messages: 100, contextBytes: 2 * ATTACHMENT_LIMITS.totalBytes + 16 * 1024 * 1024 });
 const TEXT_MIMES = new Set(['text/plain', 'text/markdown', 'text/csv', 'text/javascript', 'text/html', 'text/css', 'application/json', 'application/xml', 'text/xml']);
 const IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
@@ -20,18 +21,18 @@ export function validateChatBody(body) {
   const content = body.content ?? '';
   if (typeof content !== 'string' || content.length > CHAT_LIMITS.contentChars) fail('消息最多 100000 字符');
   const raw = body.attachments ?? [];
-  if (!Array.isArray(raw) || raw.length > CHAT_LIMITS.files) fail('最多上传 5 个文件');
+  if (!Array.isArray(raw) || raw.length > CHAT_LIMITS.files) fail('最多上传 10 个文件');
   let total = 0;
   const attachments = raw.map((file) => {
     if (!file || typeof file.name !== 'string' || !file.name.trim() || file.name.length > 200 || /[\x00-\x1f\x7f/\\]/.test(file.name)) fail('文件名非法');
     const mime = file.mime_type;
     if (!TEXT_MIMES.has(mime) && !IMAGE_MIMES.has(mime)) fail('聊天支持 UTF-8 文本、JSON、CSV、Markdown、PNG、JPEG 和 WebP 文件');
     const data = file.data_base64;
-    if (typeof data !== 'string' || !data.length || data.length > Math.ceil(CHAT_LIMITS.fileBytes / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) fail('文件编码或大小无效（单文件最多 1 MiB）');
+    if (typeof data !== 'string' || !data.length || data.length > Math.ceil(CHAT_LIMITS.fileBytes / 3) * 4 || (data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data))) fail('文件编码或大小无效（单文件最多 10 MiB）');
     const bytes = Buffer.from(data, 'base64');
     if (bytes.toString('base64') !== data || bytes.length > CHAT_LIMITS.fileBytes) fail('文件编码或大小无效');
     total += bytes.length;
-    if (total > CHAT_LIMITS.totalBytes) fail('附件总大小最多 4 MiB');
+    if (total > CHAT_LIMITS.totalBytes) fail('附件总大小最多 100 MiB');
     if (TEXT_MIMES.has(mime)) {
       try { new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { fail('文本附件必须为 UTF-8 编码'); }
       if (bytes.includes(0)) fail('文本附件不能包含二进制内容');

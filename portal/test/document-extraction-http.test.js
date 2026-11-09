@@ -34,7 +34,7 @@ test('extraction rejects legacy, corrupt, unknown and oversized requests without
     assert.ok([400, 413, 415, 422].includes(response.status), `${name}: ${response.status}`);
     assert.match((await response.json()).error.code, /^document_/);
   }
-  assert.equal((await request(f, { name: 'big.pdf', data_base64: 'A'.repeat(12 * 1024 * 1024) })).status, 413);
+  assert.equal((await request(f, { name: 'big.pdf', data_base64: 'A'.repeat(14 * 1024 * 1024) })).status, 413);
 });
 
 test('all document formats reach real chat and work prompt builders as text, not filenames', async t => {
