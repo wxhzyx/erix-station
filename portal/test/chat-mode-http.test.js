@@ -1,3 +1,5 @@
+import { CHAT_BODY_BYTES } from '../src/attachment-limits.js';
+import { request } from 'node:http';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../src/http.js';
@@ -13,6 +15,7 @@ async function fixture(t, { restricted = false } = {}) {
   const original = pool.query.bind(pool);
   const queries = [];
   pool.query = async (sql, args) => {
+    if (sql.includes('pg_try_advisory_xact_lock')) return {rows:[{acquired:true}]};
     if (sql.includes('chat_conversations')) { queries.push(sql); return { rows: [] }; }
     return original(sql, args);
   };
@@ -50,7 +53,19 @@ test('chat HTTP CSRF rejection precedes all conversation writes', async (t) => {
 });
 test('chat HTTP oversized JSON rejected before DB or model call', async (t) => {
   const f = await fixture(t);
-  const res = await fetch(`${f.base}/api/chat/conversations/${id}/messages`, { method: 'POST', headers: f.headers, body: JSON.stringify({ content: 'x'.repeat(6 * 1024 * 1024 + 1) }) });
-  assert.equal(res.status, 413);
+  const status = await new Promise((resolve,reject)=>{ const req=request(`${f.base}/api/chat/conversations/${id}/messages`,{method:'POST',headers:{...f.headers,'content-length':CHAT_BODY_BYTES+1}},res=>{res.resume();resolve(res.statusCode)});req.on('error',reject);req.flushHeaders(); });
+  assert.equal(status, 413);
   assert.equal(f.queries.length, 0);
+});
+
+
+test('10 MiB attachments pass chat, work and queued-message HTTP envelopes', async t => {
+  const f = await fixture(t); const text = 'x'.repeat(10 * 1024 * 1024);
+  const chat = {request_id:id,content:'inspect',attachments:[{name:'large.txt',mime_type:'text/plain',data_base64:Buffer.from(text).toString('base64')}]};
+  const work = {content:'inspect',attachments:[{kind:'file',path:'upload:large.txt',name:'large.txt',text}]};
+  for (const [path,body] of [[`/api/chat/conversations/${id}/messages`,chat],[`/api/sessions/${id}/messages`,work],[`/api/sessions/${id}/queued-inputs`,{...work,kind:'follow_up'}]]) {
+    const res=await fetch(f.base+path,{method:'POST',headers:f.headers,body:JSON.stringify(body)});
+    // Missing owned conversation/session: the size validator must not reject it first.
+    assert.equal(res.status,404,path+': '+await res.text());
+  }
 });

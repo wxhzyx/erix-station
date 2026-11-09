@@ -103,8 +103,8 @@ describe('Standalone chat', () => {
     const { wrapper } = await setup(); const input = wrapper.get('input[type=file]');
     Object.defineProperty(input.element, 'files', {configurable:true,value:[new File(['binary'], 'file.bin', {type:'application/octet-stream'})]});
     await input.trigger('change'); await flushPromises(); expect(wrapper.get('[role=alert]').text()).toContain('暂不支持');
-    Object.defineProperty(input.element, 'files', {configurable:true,value:Array.from({length:6}, (_,i) => new File(['x'], `${i}.txt`))});
-    await input.trigger('change'); await flushPromises(); expect(wrapper.get('[role=alert]').text()).toContain('最多 5');
+    Object.defineProperty(input.element, 'files', {configurable:true,value:Array.from({length:11}, (_,i) => new File(['x'], `${i}.txt`))});
+    await input.trigger('change'); await flushPromises(); expect(wrapper.get('[role=alert]').text()).toContain('最多 10');
     expect(mockApi.mock.calls.some(([,opts]) => opts?.method === 'POST')).toBe(false);
   });
   it('back navigation clears an unsent draft and does not resurrect old history', async () => {
@@ -160,9 +160,9 @@ describe('document extraction', () => {
     const { wrapper } = await setup();
     await upload(wrapper, 'old.doc'); expect(wrapper.get('[role=alert]').text()).toContain('转换');
     const input = wrapper.get('input[type=file]');
-    Object.defineProperty(input.element, 'files', { configurable:true, value:[{name:'large.pdf',size:8 * 1024 * 1024 + 1}] });
+    Object.defineProperty(input.element, 'files', { configurable:true, value:[{name:'large.pdf',size:10 * 1024 * 1024 + 1}] });
     await input.trigger('change'); await flushPromises();
-    expect(wrapper.get('[role=alert]').text()).toContain('8 MiB');
+    expect(wrapper.get('[role=alert]').text()).toContain('10 MiB');
     expect(mockApi.mock.calls.some(([url]) => url === '/api/attachments/extract')).toBe(false);
   });
 });
@@ -188,8 +188,8 @@ describe('chat file drop', () => {
   });
   it('applies picker limits to drops and rejects folders', async () => {
     const {wrapper}=await setup();const zone=wrapper.get('.file-drop-region');
-    await zone.trigger('drop',{dataTransfer:{types:['Files'],files:Array.from({length:6},(_,i)=>new File(['x'],`${i}.txt`))}});
-    expect(wrapper.get('[role=alert]').text()).toContain('最多 5');
+    await zone.trigger('drop',{dataTransfer:{types:['Files'],files:Array.from({length:11},(_,i)=>new File(['x'],`${i}.txt`))}});
+    expect(wrapper.get('[role=alert]').text()).toContain('最多 10');
     await zone.trigger('drop',{dataTransfer:{types:['Files'],files:[],items:[{webkitGetAsEntry:()=>({isDirectory:true})}]}});
     expect(wrapper.get('[role=alert]').text()).toContain('不支持文件夹');
   });

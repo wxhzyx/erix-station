@@ -1,3 +1,4 @@
+import { DOCUMENT_BODY_BYTES } from './attachment-limits.js';
 import yauzl from 'yauzl';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { DOCUMENT_LIMITS as L } from './document-parser.js';
@@ -6,17 +7,20 @@ const fail = (code, message, status = 422) => { throw Object.assign(new Error(me
 const warnings = [];
 const images = [];
 let output = '';
+let outputBytes = 0;
 let truncated = false;
-const notice = '\n[内容已截断：超过解析或 64 KiB 文本限制，请拆分文件。]';
+const notice = '\n[内容已截断：超过解析或 10 MiB 文本限制，请拆分文件。]';
 function add(value) {
   if (truncated) return;
   const text = String(value).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\ufffd]/g, ' ');
-  const available = L.textBytes - 2048 - Buffer.byteLength(output);
-  if (Buffer.byteLength(text) <= available) { output += text; return; }
-  // Slice on code points so multibyte UTF-8 is never broken.
-  let size = 0; let partial = '';
-  for (const char of text) { size += Buffer.byteLength(char); if (size > available) break; partial += char; }
-  output += partial; truncated = true;
+  const available = Math.max(0, L.textBytes - 2048 - outputBytes);
+  const size = Buffer.byteLength(text);
+  if (size <= available) { output += text; outputBytes += size; return; }
+  // Trim at a UTF-8 boundary without building millions of one-character strings.
+  const bytes = Buffer.from(text);
+  let end = available;
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
+  output += bytes.subarray(0, end).toString('utf8'); outputBytes += end; truncated = true;
 }
 function limit() { truncated = true; }
 const parser = new XMLParser({ preserveOrder: true, ignoreAttributes: false, attributeNamePrefix: '',
@@ -262,7 +266,7 @@ try {
   const input = []; let inputSize = 0;
   for await (const chunk of process.stdin) {
     inputSize += chunk.length;
-    if (inputSize > 12 * 1024 * 1024) fail('size', '文档输入超限', 413);
+    if (inputSize > DOCUMENT_BODY_BYTES) fail('size', '文档输入超限', 413);
     input.push(chunk);
   }
   const workerData = JSON.parse(Buffer.concat(input).toString('utf8'));

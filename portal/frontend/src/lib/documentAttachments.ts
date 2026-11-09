@@ -1,15 +1,16 @@
+import { ATTACHMENT_LIMITS } from './attachmentLimits';
 import { api } from '../api';
 
-export const DOCUMENT_MAX_BYTES = 8 * 1024 * 1024;
+export const DOCUMENT_MAX_BYTES = ATTACHMENT_LIMITS.fileBytes;
 export const DOCUMENT_EXTENSIONS = ['pdf', 'docx', 'xlsx', 'pptx'];
 export const isDocument = (name: string) => DOCUMENT_EXTENSIONS.includes(name.split('.').pop()?.toLowerCase() ?? '');
 export function rejectLegacyDocument(name: string) {
   if (/\.(doc|xls|ppt)$/i.test(name)) throw new Error('旧版 Office 文件请先转换为 DOCX、XLSX 或 PPTX / Convert legacy Office files first.');
 }
 export function bytesBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
+  const chunks: string[] = [];
+  for (let i = 0; i < bytes.length; i += 32768) chunks.push(String.fromCharCode(...bytes.subarray(i, i + 32768)));
+  return btoa(chunks.join(''));
 }
 export function readBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -20,7 +21,7 @@ export function readBase64(file: File): Promise<string> {
   });
 }
 export async function extractDocument(file: File, signal?: AbortSignal, mode: 'chat' | 'work' = 'chat'): Promise<{ name: string; text: string; warnings: string[] }> {
-  if (file.size > DOCUMENT_MAX_BYTES) throw new Error('文档单个最多 8 MiB / Maximum document size: 8 MiB');
+  if (file.size > DOCUMENT_MAX_BYTES) throw new Error('文档单个最多 10 MiB / Maximum document size: 10 MiB');
   signal?.throwIfAborted();
   const data_base64 = await readBase64(file);
   // A completed file read must not send the previous user's data under a new login.
@@ -29,6 +30,6 @@ export async function extractDocument(file: File, signal?: AbortSignal, mode: 'c
     method: 'POST', signal, body: JSON.stringify({ name: file.name, data_base64, mode }),
   });
   signal?.throwIfAborted();
-  if (typeof result.text !== 'string' || new TextEncoder().encode(result.text).length > 65536 || !Array.isArray(result.warnings)) throw new Error('文档解析响应无效 / Invalid extraction response');
+  if (typeof result.text !== 'string' || new TextEncoder().encode(result.text).length > ATTACHMENT_LIMITS.fileBytes || !Array.isArray(result.warnings)) throw new Error('文档解析响应无效 / Invalid extraction response');
   return result;
 }

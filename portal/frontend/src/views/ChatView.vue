@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ATTACHMENT_LIMITS } from "../lib/attachmentLimits";
 import { ElButton, ElInput, ElTag, ElAlert } from "element-plus";
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -174,8 +175,8 @@ async function addFiles(chosen: File[]) {
   reading.value = true;
   error.value = "";
   try {
-    if (files.value.length + chosen.length > 5)
-      throw new Error("最多 5 个文件 / Maximum 5 files");
+    if (files.value.length + chosen.length > ATTACHMENT_LIMITS.count)
+      throw new Error("最多 10 个文件 / Maximum 10 files");
     const allowed = new Set([
       "text/plain",
       "text/markdown",
@@ -205,9 +206,9 @@ async function addFiles(chosen: File[]) {
           warnings: extracted.warnings,
         });
       } else {
-        if (f.size > 1024 * 1024)
+        if (f.size > ATTACHMENT_LIMITS.fileBytes)
           throw new Error(
-            "文本或图片单个最多 1 MiB / Maximum text/image size: 1 MiB",
+            "文本或图片单个最多 10 MiB / Maximum text/image size: 10 MiB",
           );
         if (!allowed.has(fileType(f)))
           throw new Error("暂不支持此文件格式 / Unsupported file format");
@@ -226,10 +227,10 @@ async function addFiles(chosen: File[]) {
         (sum, f) => sum + byteLength(f),
         0,
       ) >
-      4 * 1024 * 1024
+      ATTACHMENT_LIMITS.totalBytes
     )
       throw new Error(
-        "附件提取后总计最多 4 MiB / Maximum extracted total: 4 MiB",
+        "附件提取后总计最多 100 MiB / Maximum extracted total: 100 MiB",
       );
     if (token === epoch) files.value.push(...attachments);
   } catch (e) {

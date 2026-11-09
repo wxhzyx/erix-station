@@ -85,13 +85,19 @@ class QuotaTests(unittest.TestCase):
         data["model"]="unconfigured-model"
         with self.assertRaises(HTTPException):prompt_upper_bound(data)
 
+    def test_ten_images_and_ten_mib_image_are_accepted(self):
+        large = {"type":"image_url","image_url":{"url":"data:image/png;base64,"+base64.b64encode(b"x"*(10*1024*1024)).decode()}}
+        small = {"type":"image_url","image_url":{"url":"data:image/png;base64,eA=="}}
+        data = {"model":"fde-station-qwen3.8-flash-next","messages":[{"role":"user","content":[large]+[small]*9}]}
+        self.assertEqual(prompt_upper_bound(data),131072)
+
     def test_rejects_remote_invalid_oversized_images_and_unknown_blocks(self):
-        for url in ["http://localhost/private", "data:image/png;base64,###", "data:image/png;base64,", "data:image/png;base64,"+"a"*1398105]:
+        for url in ["http://localhost/private", "data:image/png;base64,###", "data:image/png;base64,", "data:image/png;base64,"+"a"*13981017]:
             with self.assertRaises(HTTPException):
                 prompt_upper_bound({"model":"fde-station-qwen3.8-flash-next","messages":[{"content":[{"type":"image_url","image_url":{"url":url}}]}]})
         image={"type":"image_url","image_url":{"url":"data:image/png;base64,eA=="}}
         with self.assertRaises(HTTPException):
-            prompt_upper_bound({"model":"fde-station-qwen3.8-flash-next","messages":[{"content":[image]*6}]})
+            prompt_upper_bound({"model":"fde-station-qwen3.8-flash-next","messages":[{"content":[image]*11}]})
         with self.assertRaises(HTTPException):
             prompt_upper_bound({"messages":[{"content":[{"type":"file","file":{"file_data":"anything"}}]}]})
 

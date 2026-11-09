@@ -47,9 +47,9 @@ use a validated target UUID in the URL, never a request-body owner override.
 
 Chat files are submitted inline with the authenticated message; there are no
 public file URLs or orphan upload objects. UTF-8 text/JSON/CSV/Markdown and
-PNG/JPEG/WebP are supported (images require a vision model). Maximum 5 files,
-1 MiB each, 4 MiB combined. Encodings, file names, MIME types and image signatures
-are validated server-side. Each chat is bounded to 100 messages / 8 MiB prompt;
+PNG/JPEG/WebP are supported (images require a vision model). Maximum 10 files,
+10 MiB each, 100 MiB combined. Encodings, file names, MIME types and image signatures
+are validated server-side. Each chat is bounded to 100 messages / 216 MiB transport prompt (model context limits remain separate);
 start a new chat when the limit is reached. Chat response deadlines include body
 consumption. Chat does not enable tool calling.
 
@@ -75,8 +75,8 @@ chat sends 15-second heartbeat comments. Deploy the portal, frontend and rebuilt
 runner image; existing worker containers need reconciliation to adopt the new
 batching default. No database or credential migration is required.
 
-Work supports multiple UTF-8 text/source attachments, up to 8 files, 64 KiB each,
-256 KiB combined. The server validates and embeds their contents into the
+Work supports multiple UTF-8 text/source attachments, up to 10 files, 10 MiB each,
+100 MiB combined. The server validates and embeds their contents into the
 canonical user transcript, so the runner receives the files rather than only
 attachment names. These are context attachments, not files written into the
 project directory. PDF and modern Office files are extracted to bounded text before
@@ -107,8 +107,8 @@ chat prompts and canonical work turns therefore contain actual document text,
 including queued delivery and recalled drafts. The original filename is retained.
 Only sent text is stored in the existing conversation database.
 
-Documents are limited to 8 MiB each before extraction (12 MiB JSON request ceiling).
-Extracted text is capped at 64 KiB UTF-8 per document, including explicit truncation
+Documents are limited to 10 MiB each before extraction (base64 expansion plus 64 KiB JSON overhead).
+Extracted text is capped at 10 MiB UTF-8 per document, including explicit truncation
 notices. Existing message file-count and aggregate-text limits still apply. Warnings
 are shown before sending and included in the extracted content, not silently lost.
 There are at most four simultaneous upload bodies per portal process and one per
@@ -144,7 +144,7 @@ deadline, zero core/file-size limit, and at most two parser processes. Only a
 minimal non-secret environment is inherited. Budget portal/container memory for
 these processes plus the portal itself; configure host/container memory limits
 for the complete deployment. No fallback runs the parser in the portal process. OOXML archives: at most
-2,048 entries, 4 MiB per entry, 32 MiB declared expanded total. Extraction covers
+2,048 entries, 16 MiB per entry, 64 MiB declared expanded total. Extraction covers
 a bounded prefix of 200 PDF pages / 50 sheets / 100,000 cells / 200 slides,
 with truncation disclosed. Archive paths are never written to disk; DTD/entity
 content and macros/embedded objects are rejected, external relationships ignored.
@@ -186,7 +186,7 @@ instructions or tools. Ambiguous content is marked unreadable; truncated model
 output is rejected. Image recognition can take up to 150 seconds; disconnect or
 navigation cancels the model request and the per-user upload slot is then released.
 The upload-body timeout remains 30 seconds; the entire post-upload processing
-deadline is 180 seconds. Normal 64 KiB output and archive/CPU/memory limits remain.
+deadline is 180 seconds. 10 MiB output and archive/CPU/memory limits remain.
 
 Canvas 1.1.0 is now an explicit pinned dependency (previously optional through
 PDF.js). The child disables automatic host/user font loading; native allocation
@@ -198,6 +198,18 @@ It reserves the configured 131072-token context upper bound for the whole visual
 prompt, then settles actual provider usage. This reservation is temporary, not
 a flat image charge. Keep the trusted bound in sync before increasing that alias's
 context window. Unconfigured aliases, remote image URLs and unknown block types
-remain rejected; per-image 1 MiB, per-message 5 images, history 8 MiB limits apply.
+remain rejected; per-image 10 MiB, per-message 10 attachments, history 216 MiB transport limits apply.
 Only the internal gateway callback needs updating; cloud uplink accounting stays
 at the internal team boundary.
+
+### Attachment capacity (2026-11-09)
+
+Both modes accept ten attachments, 10 MiB per original file and per extracted text,
+100 MiB aggregate. Upload picker and drop, JSON request ceilings, extraction worker
+input/output and frontend response checks share this policy. Work message/queue
+requests allow 201 MiB for JSON escaping; transcript/checkpoint envelopes allow
+404 MiB for nested JSON. MAX_ROUND_BYTES still overrides the default. The chat
+base64 validator uses a linear character-class scan plus canonical re-encoding.
+Model token context is independent of upload capacity; raising file limits does
+not enlarge the selected model's context window. Existing parser complexity,
+visual-page count, CPU, memory and worker-concurrency limits still apply.

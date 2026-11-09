@@ -7,9 +7,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolveMaxRoundBytes } from '../src/internal.js';
 
-const CONTRACT_DEFAULT = 1024 * 1024; // portal.md §9.7
+const CONTRACT_DEFAULT = 404 * 1024 * 1024; // 100 MiB attachments with nested JSON escaping
 
-test('默认值 = 契约值 1 MiB；env 覆盖生效（真机复现要把闸调小到几百 KB）', () => {
+test('默认值覆盖完整附件预算；env 覆盖生效（真机复现要把闸调小到几百 KB）', () => {
   assert.equal(resolveMaxRoundBytes(undefined), CONTRACT_DEFAULT, '没配 env 必须是契约值');
   assert.equal(resolveMaxRoundBytes(''), CONTRACT_DEFAULT);
   assert.equal(resolveMaxRoundBytes('307200'), 307200, '复现用：300 KB');

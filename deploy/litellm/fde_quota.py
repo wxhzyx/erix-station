@@ -114,8 +114,8 @@ def prompt_upper_bound(data):
                     if not isinstance(url, str) or not url.startswith(("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,")):
                         raise HTTPException(400, "FDE images require inline PNG, JPEG or WebP data")
                     encoded = url.split(",", 1)[1]
-                    if len(encoded) > 1398104:
-                        raise HTTPException(400, "FDE images are limited to 1 MiB each")
+                    if len(encoded) > 13981016:
+                        raise HTTPException(400, "FDE images are limited to 10 MiB each")
                     try:
                         raw = base64.b64decode(encoded, validate=True)
                     except (ValueError, binascii.Error):
@@ -123,7 +123,7 @@ def prompt_upper_bound(data):
                     image_count += 1
                     message_images += 1
                     image_bytes += len(raw)
-                    if not raw or len(raw) > 1048576 or message_images > 5 or image_bytes > 8388608:
+                    if not raw or len(raw) > 10485760 or message_images > 10 or image_bytes > 226492416:
                         raise HTTPException(400, "FDE image count or size limit exceeded")
                     blocks.append({"type": "text", "text": "[image]"})
                 else:

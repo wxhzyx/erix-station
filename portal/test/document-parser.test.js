@@ -38,7 +38,7 @@ for (const ext of ['pdf', 'docx', 'xlsx', 'pptx']) {
   });
 }
 test('text truncation is explicit and respects multibyte UTF-8 limit', async () => {
-  const result = await parse('docx', officeFixture('docx', { text: '界'.repeat(50000) }));
+  const result = await parse('docx', officeFixture('docx', { text: '界'.repeat(Math.ceil(L.textBytes / 3) + 100) }));
   assert.match(result.text, /内容已截断/); assert.ok(Buffer.byteLength(result.text) <= L.textBytes);
   assert.doesNotMatch(result.text, /\ufffd/); assert.ok(result.warnings.some(s => s.includes('截断')));
 });
@@ -134,4 +134,14 @@ test('subprocess environment excludes portal credentials and inherited Node hook
     assert.doesNotMatch(result.text,/synthetic-secret|DOCUMENT_TEST_SECRET|NODE_OPTIONS/);
     assert.equal(JSON.parse(result.text).MALLOC_ARENA_MAX,'2');
   } finally {if(old===undefined)delete process.env.DOCUMENT_TEST_SECRET;else process.env.DOCUMENT_TEST_SECRET=old;await rm(dir,{recursive:true,force:true});}
+});
+
+test('text above old 64 KiB budget is retained through the final marker', async () => {
+  const text = '界'.repeat(50000) + 'FINAL_MARKER';
+  const result = await parse('docx',officeFixture('docx',{text}));
+  assert.match(result.text,/FINAL_MARKER/);assert.ok(Buffer.byteLength(result.text)>65536);assert.doesNotMatch(result.text,/内容已截断/);
+});
+test('exact 10 MiB PDF passes the upload and worker envelopes', async () => {
+  const source=pdfFixture();const bytes=Buffer.concat([source,Buffer.alloc(L.inputBytes-source.length,32)]);
+  assert.match((await parse('pdf',bytes)).text,/Synthetic/);
 });
