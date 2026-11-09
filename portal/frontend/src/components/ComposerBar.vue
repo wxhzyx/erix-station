@@ -5,6 +5,7 @@ import { ElButton, ElInput, ElAlert, ElTag } from "element-plus";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useAuthStore } from "../stores/auth";
 import { useFileDrop } from "../lib/useFileDrop";
+import { ATTACHMENT_LIMITS } from "../lib/attachmentLimits";
 import { readWorkFiles } from "../lib/workAttachments";
 import { useI18n } from "vue-i18n";
 import { useWorkbenchStore } from "../stores/workbench";
@@ -23,12 +24,12 @@ const fileDrop = useFileDrop(
   },
 );
 const attachmentLimitError = computed(() =>
-  store.pendingAttachments.length > 8 ||
+  store.pendingAttachments.length > ATTACHMENT_LIMITS.count ||
   store.pendingAttachments.reduce(
     (sum, file) => sum + new TextEncoder().encode(file.text).length,
     0,
-  ) > 262144
-    ? "取回的文件超出单次发送限制（8 个 / 256 KiB）。文件仍保留，请移除部分附件后分批发送。"
+  ) > ATTACHMENT_LIMITS.totalBytes
+    ? "取回的文件超出单次发送限制（10 个 / 100 MiB）。文件仍保留，请移除部分附件后分批发送。"
     : "",
 );
 let mounted = true;
