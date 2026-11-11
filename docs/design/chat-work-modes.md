@@ -213,3 +213,8 @@ base64 validator uses a linear character-class scan plus canonical re-encoding.
 Model token context is independent of upload capacity; raising file limits does
 not enlarge the selected model's context window. Existing parser complexity,
 visual-page count, CPU, memory and worker-concurrency limits still apply.
+
+
+### 会话历史显示分页（0.1.61）
+
+工作模式首屏仅渲染最后100个显示项（消息、工具卡片、推理和运行分隔行均计入）。点击“加载更多”再显示更早100项；内存历史用尽时，后端按100条消息锚点继续读取。消息分页多读一条判定是否有更早历史，游标为当前页最小seq。加载后保持阅读位置；会话切换恢复首屏窗口。此窗口仅影响页面显示，不改变账本、模型上下文或Git状态。

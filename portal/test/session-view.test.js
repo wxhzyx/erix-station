@@ -840,7 +840,7 @@ test('message cursor still filters anchor rows before transcript projection', as
   const anchorQuery = pool.queries.find((query) => query.sql.includes('FROM messages')
     && !query.sql.includes("role = 'user'")
     && !query.sql.includes('FROM chat_sessions s'));
-  assert.deepEqual(anchorQuery.params, [SESSION_ID, 2, 5]);
+  assert.deepEqual(anchorQuery.params, [SESSION_ID, 3, 5]);
   assert.equal(result.last_seq, 8);
 });
 
@@ -1624,4 +1624,17 @@ test('#390-A 上游契约哨兵：`summary` 的缺失标记仍是字面量 "miss
     new URL('../../node_modules/erix-agent/src/store/file.js', import.meta.url), 'utf8');
   assert.ok(/summary\?:\{action:string,note:string\}\|"missing"/.test(upstream),
     'erix-agent 的 `summary` 契约形态变了 ⇒ `hasRealSummary()` 的判据要跟着重核（别只改这里不查上游）');
+});
+
+
+test('会话消息分页：101条分两页，无遗漏、不重复，最后一页无游标', async () => {
+  const anchors = Array.from({length:101}, (_,i) => message(`page-${i+1}`, i+1, 'user', '', null));
+  const pool = new SessionViewPool({anchors, transcriptRows:[]});
+  const first = await getSession(pool, {userId:USER_ID,sessionId:SESSION_ID,limit:100});
+  assert.equal(first.messages.length,100);
+  assert.equal(first.next_cursor,2);
+  const last = await getSession(pool, {userId:USER_ID,sessionId:SESSION_ID,limit:100,messagesCursor:first.next_cursor});
+  assert.deepEqual(last.messages.map(m=>m.id),['page-1']);
+  assert.equal(last.next_cursor,null);
+  assert.equal(new Set([...last.messages,...first.messages].map(m=>m.id)).size,101);
 });

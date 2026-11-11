@@ -68,9 +68,9 @@ const deltaElapsedText = computed(() => {
 const expandedIds = reactive(new Set<string>());
 
 watch(
-  () => store.entries,
+  () => store.visibleEntries,
   () => {
-    for (const en of store.entries) {
+    for (const en of store.visibleEntries) {
       if (
         en.kind === "tool" &&
         isToolCallExpanded(en.callId) &&
@@ -371,11 +371,9 @@ function msgClass(en: Extract<StreamEntry, { kind: "msg" }>): string {
 </script>
 
 <template>
-  <!-- 试用台账 #10：「加载更早消息」入口。后端 keyset 分页一直在 work（默认只给最新一窗），
-       此前前端从不消费 next_cursor ⇒ 长会话滚到顶就从压缩横幅开始，最早的对话「看起来消失」
-       （其实都在库里，不是压缩删的）。游标 null（已到底/旧后端）则不渲染；失败不推进游标，可重试。 -->
+  <!-- 先显示缓存的更早项；缓存用尽后再按后端游标取下一页。 -->
   <p
-    v-if="store.olderMessagesCursor != null"
+    v-if="store.hasMoreEntries"
     class="load-older mb-2 text-center"
   >
     <ElButton
@@ -383,7 +381,7 @@ function msgClass(en: Extract<StreamEntry, { kind: "msg" }>): string {
       class="rounded-md border border-black/20 px-2.5 py-1 text-xs text-black/60 hover:bg-black/5 disabled:opacity-50"
       :disabled="store.olderLoading"
       data-test="load-older"
-      @click="store.loadOlderMessages()"
+      @click="store.loadMoreEntries()"
       >{{
         store.olderLoading
           ? t("stream.loadOlderLoading")
@@ -426,7 +424,7 @@ function msgClass(en: Extract<StreamEntry, { kind: "msg" }>): string {
     <p>{{ t("stream.chooseOrNewSession") }}</p>
   </div>
 
-  <template v-for="(en, i) in store.entries" :key="entryKey(en, i)">
+  <template v-for="(en, i) in store.visibleEntries" :key="entryKey(en, i)">
     <!-- 消息气泡：终稿 markdown 走 v-html；其余纯文本（{{ }} 插值等价 textContent） -->
     <div v-if="en.kind === 'msg'" :class="msgClass(en)">
       <!-- issue #282 A：每条消息（用户与助手都算）显示时刻；DTO 没给 created_at 就整段不出 -->
