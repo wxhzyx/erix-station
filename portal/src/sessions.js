@@ -262,7 +262,7 @@ export async function getSession(pool, { userId, sessionId, limit = 20, messages
   // issue #197：withMessageCount → 会话总数与属主校验同一条 SQL 取回（见 fetchSession）。
   const s = await fetchSession(pool, sessionId, userId, { withMessageCount: true });
   const n = Math.min(Math.max(Number(limit) || 20, 1), 100);
-  const params = [sessionId, n];
+  const params = [sessionId, n + 1];
   let where = `session_id = $1`;
   if (messagesCursor != null) {
     if (!Number.isInteger(Number(messagesCursor)) || Number(messagesCursor) < 1) {

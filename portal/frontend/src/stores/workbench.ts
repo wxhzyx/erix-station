@@ -335,6 +335,10 @@ export const useWorkbenchStore = defineStore('workbench', () => {
    */
   const ownedBy = ref<string | null>(null);
   const entries = ref<StreamEntry[]>([]); // 消息流（含分隔行/工具卡片占位）
+  // 首屏按实际显示项分页；一条助手消息可能包含数十张工具卡片。
+  const visibleEntryLimit = ref(100);
+  const visibleEntries = computed(() => entries.value.slice(-visibleEntryLimit.value));
+  const hasMoreEntries = computed(() => entries.value.length > visibleEntryLimit.value || olderMessagesCursor.value != null);
   const renderedIds = ref<Set<string> | null>(null); // 去重（refresh 与流式缓冲竞态）
   const pendingAttachments = ref<WorkAttachment[]>([]);
   const attachmentDrafts = new Map<string, WorkAttachment[]>();
@@ -878,6 +882,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   // 空 entries + 视图据空态渲染默认文案。
   function streamDefaultText() {
     entries.value = [];
+    visibleEntryLimit.value = 100;
   }
 
   async function openSession(id: string) {
@@ -897,6 +902,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     clearExpandedToolCalls();
     renderedIds.value = new Set();
     entries.value = [];
+    visibleEntryLimit.value = 100;
     sessionMessageCount.value = null; // #197：先清旧会话的计数，加载失败/竞态丢弃时不得串会话残留
     olderMessagesCursor.value = null; // 试用台账 #10：旧会话的游标不得泄漏到新会话（加载成功后重赋）
     olderEventsCursor.value = null;
@@ -966,7 +972,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
    * 批内顺序已按 seq 排好，整块搬移安全；await 期间实时路推入的 entry 留在原位（它们本来
    * 就更新，相对序不变）。滚动锚定归视图（WorkbenchView watch olderPrependSeq 补 scrollTop）。
    */
-  async function loadOlderMessages(): Promise<boolean> {
+  async function loadOlderMessages(notifyPrepend = true): Promise<boolean> {
     const sid = sessionId.value;
     const cursor = olderMessagesCursor.value;
     if (!sid || cursor == null || olderLoading.value) return false;
@@ -995,7 +1001,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       if (entries.value.length > anchor) {
         // 只搬「本批回放新产出」的那一段（anchor→尾）到头部；实时路/旧批次位置相对不动。
         entries.value.unshift(...entries.value.splice(anchor));
-        olderPrependSeq.value += 1; // 通知视图锚定滚动位置
+        if (notifyPrepend) olderPrependSeq.value += 1; // 通知视图锚定滚动位置
       }
       return true;
     } catch {
@@ -1003,6 +1009,19 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     } finally {
       olderLoading.value = false;
     }
+  }
+
+  async function loadMoreEntries(): Promise<boolean> {
+    if (olderLoading.value) return false;
+    const request = sessionReqSeq.value;
+    const ctx = ctxSeq.value;
+    if (entries.value.length <= visibleEntryLimit.value) {
+      if (!await loadOlderMessages(false)) return false;
+      if (request !== sessionReqSeq.value || ctx !== ctxSeq.value) return false;
+    }
+    visibleEntryLimit.value += 100;
+    olderPrependSeq.value += 1;
+    return true;
   }
 
   /** 旧 newSess.onclick：建会话 → 列表置顶 → 打开（路由 push 由视图做）。 */
@@ -1223,6 +1242,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     es.resetStreamState();
     // ③ 消息流与详情区（含分页游标、#189 折叠原文缓存、#236/#306 幂等集）
     entries.value = [];
+    visibleEntryLimit.value = 100;
     renderedIds.value = null;
     olderMessagesCursor.value = null;
     olderEventsCursor.value = null;
@@ -1618,6 +1638,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     sessionMessageCount,
     entries, renderedIds, inputValue, pendingAttachments, messageSubmitting, creatingSession,
     olderMessagesCursor, olderEventsCursor, olderLoading, olderPrependSeq,
+    visibleEntries, hasMoreEntries,
     drafts, es,
     // issue #428：换账号复位的两个入口（`ownedBy` 不外露：它是实现细节，不是界面状态）
     claimOwnership, resetForUserSwitch,
@@ -1633,7 +1654,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     saveDraft, addMessage, addPartialOutput, addRunTermination, send, stop, refreshSession,
     // issue #370：运行中说话（steer / follow_up 入队）与整队取回
     sendQueued, recallQueue, applyQueueSnapshot, adoptDeliveredRun,
-    loadOlderMessages,
+    loadOlderMessages, loadMoreEntries,
     pushStreamError,
     // issue #306：导出让单测能直接驱动「终态后补拉 history」的窄条件（不靠拼 SSE 帧也能钉零重拉）。
     // issue #236：同一个入口现在也喂终态分隔条（`run_termination`），故改名 `repullHistorySynthItems`。

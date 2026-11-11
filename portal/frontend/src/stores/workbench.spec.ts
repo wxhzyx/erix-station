@@ -2556,3 +2556,46 @@ describe('first-send target ownership across session opening', () => {
     });
   }
 });
+
+
+describe('会话显示项分批加载', () => {
+  function seed(count: number) {
+    const store = useWorkbenchStore();
+    store.sessionId = 's1';
+    store.entries = Array.from({ length: count }, (_, i) => ({ kind: 'msg' as const, id: `m${i}`, role: 'user' as const, text: `message ${i}`, html: null, synthetic: false, sessionId: 's1' }));
+    return store;
+  }
+  it('首屏仅最后100项；每次显示更早100项，内存历史无需重复请求', async () => {
+    const request = vi.fn(); vi.stubGlobal('fetch', request);
+    const store = seed(621);
+    expect(store.visibleEntries).toHaveLength(100);
+    expect(store.visibleEntries[0]).toMatchObject({ id: 'm521' });
+    expect(store.hasMoreEntries).toBe(true);
+    await store.loadMoreEntries();
+    expect(store.visibleEntries).toHaveLength(200);
+    expect(store.visibleEntries[0]).toMatchObject({ id: 'm421' });
+    expect(store.olderPrependSeq).toBe(1);
+    expect(request).not.toHaveBeenCalled();
+    for (let i = 0; i < 5; i++) await store.loadMoreEntries();
+    expect(store.visibleEntries).toHaveLength(621);
+    expect(store.hasMoreEntries).toBe(false);
+  });
+  it('显示项包括工具/推理/分隔行；新会话重置到100项', async () => {
+    const store = seed(250);
+    store.entries = Array.from({length: 250}, (_, i) => ({kind: 'sep' as const, text: `tool round ${i}`}));
+    expect(store.visibleEntries).toHaveLength(100);
+    await store.loadMoreEntries(); expect(store.visibleEntries).toHaveLength(200);
+    mockFetch(() => ({status: 200, body: {session: {id:'s2'},messages:[],last_seq:0}}));
+    await store.openSession('s2');
+    store.entries = Array.from({length: 250}, (_, i) => ({kind: 'sep' as const, text: String(i)}));
+    expect(store.visibleEntries).toHaveLength(100);
+  });
+  it('本地历史用尽才按100条请求后端；失败保留入口和窗口', async () => {
+    const store = seed(100); store.olderMessagesCursor = 10;
+    const request = vi.fn(async (_url: string) => {throw new Error('offline')}); vi.stubGlobal('fetch',request);
+    expect(await store.loadMoreEntries()).toBe(false);
+    expect(String(request.mock.calls[0]?.[0])).toContain('limit=100&cursor=10');
+    expect(store.visibleEntries).toHaveLength(100);
+    expect(store.hasMoreEntries).toBe(true);
+  });
+});
